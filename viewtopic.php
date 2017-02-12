@@ -274,7 +274,7 @@ $forum_page['item_count'] = 0;	// Keep track of post numbers
 
 // Retrieve the posts (and their respective poster/online status)
 $query = array(
-	'SELECT'	=> 'u.email, u.title, u.url, u.location, u.signature, u.email_setting, u.num_posts, u.registered, u.admin_note, p.id, p.poster AS username, p.poster_id, p.poster_ip, p.poster_email, p.message, p.hide_smilies, p.posted, p.edited, p.edited_by, g.g_id, g.g_user_title, o.user_id AS is_online',
+	'SELECT'	=> 'u.email, u.title, u.url, u.realname, u.location, u.signature, u.email_setting, u.num_posts, u.registered, u.admin_note, p.id, p.poster AS username, p.poster_id, p.poster_ip, p.poster_email, p.message, p.hide_smilies, p.posted, p.edited, p.edited_by, g.g_id, g.g_user_title, o.user_id AS is_online',
 	'FROM'		=> 'posts AS p',
 	'JOINS'		=> array(
 		array(
@@ -366,6 +366,8 @@ while ($cur_post = $forum_db->fetch_assoc($result))
 			{
 				if ($cur_post['location'] != '')
 				{
+                    $forum_page['author_info']['realname'] = '<li><a href="/smoelen/gebruiker/'.$cur_post["username"].'"><em>'.forum_htmlencode($cur_post['realname']).'</em></a></span></li>';
+
 					if ($forum_config['o_censoring'] == '1')
 						$cur_post['location'] = censor_words($cur_post['location']);
 
