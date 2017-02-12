@@ -2,7 +2,7 @@
 /**
  * Loads common functions used throughout the site.
  *
- * @copyright (C) 2008-2009 PunBB, partially based on code (C) 2008-2009 FluxBB.org
+ * @copyright (C) 2008-2012 PunBB, partially based on code (C) 2008-2009 FluxBB.org
  * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
  * @package PunBB
  */
@@ -14,16 +14,12 @@
 // Encodes the contents of $str so that they are safe to output on an (X)HTML page
 function forum_htmlencode($str)
 {
-	$return = ($hook = get_hook('fn_forum_htmlencode_start')) ? eval($hook) : null;
-	if ($return != null)
-		return $return;
-
 	return htmlspecialchars($str, ENT_QUOTES, 'UTF-8');
 }
 
 
 // Trim whitespace including non-breaking space
-function forum_trim($str, $charlist = " \t\n\r\x0b\xc2\xa0")
+function forum_trim($str, $charlist = " \t\n\r\0\x0B\xC2\xA0")
 {
 	return utf8_trim($str, $charlist);
 }
@@ -36,10 +32,77 @@ function forum_linebreaks($str)
 }
 
 
+// Start PHP session
+function forum_session_start() {
+	static $forum_session_started = FALSE;
+
+	$return = ($hook = get_hook('fn_forum_session_start_start')) ? eval($hook) : null;
+	if ($return != null)
+		return;
+
+	// Check if session already started
+	if ($forum_session_started && session_id())
+		return;
+
+	session_cache_limiter(FALSE);
+
+	// Check session id
+	$forum_session_id = NULL;
+	if (isset($_COOKIE['PHPSESSID']))
+		$forum_session_id = $_COOKIE['PHPSESSID'];
+	else if (isset($_GET['PHPSESSID']))
+		$forum_session_id = $_GET['PHPSESSID'];
+
+	if (empty($forum_session_id) || !preg_match('/^[a-z0-9\-,]{16,32}$/i', $forum_session_id))
+	{
+		// Create new session id
+		$forum_session_id = random_key(32, FALSE, TRUE);
+		session_id($forum_session_id);
+	}
+	
+	if (!isset($_SESSION))
+	{
+		session_start();
+	}
+	
+	if (!isset($_SESSION['initiated']))
+	{
+		session_regenerate_id();
+		$_SESSION['initiated'] = TRUE;
+	}
+
+	$forum_session_started = TRUE;
+}
+
+
 // Converts the CDATA end sequence ]]> into ]]&gt;
 function escape_cdata($str)
 {
 	return str_replace(']]>', ']]&gt;', $str);
+}
+
+
+// Check the text is CAPSED
+function check_is_all_caps($text)
+{
+	return (bool)/**/(utf8_strtoupper($text) == $text && utf8_strtolower($text) != $text);
+}
+
+
+// Return current timestamp (with microseconds) as a float
+function forum_microtime()
+{
+	if (version_compare(PHP_VERSION, '5.0.0', '>='))
+	{
+		$mt = microtime(true);
+	}
+	else
+	{
+		list($usec, $sec) = explode(' ', microtime());
+		$mt = ((float)/**/$usec + (float)/**/$sec);
+	}
+
+	return $mt;
 }
 
 
@@ -70,7 +133,7 @@ function array_insert(&$input, $offset, $element, $key = null)
 function forum_unregister_globals()
 {
 	$register_globals = @ini_get('register_globals');
-	if ($register_globals === "" || $register_globals === "0" || strtolower($register_globals) === "off")
+	if ($register_globals === '' || $register_globals === '0' || strtolower($register_globals) === 'off')
 		return;
 
 	// Prevent script.php?GLOBALS[foo]=bar
@@ -89,6 +152,8 @@ function forum_unregister_globals()
 			unset($GLOBALS[$k]);	// Double unset to circumvent the zend_hash_del_key_or_index hole in PHP <4.4.3 and <5.1.4
 		}
 }
+
+
 // Removes any "bad" characters (characters which mess with the display of a page, are invisible, etc) from user input
 function forum_remove_bad_characters()
 {
@@ -134,9 +199,11 @@ function forum_fix_request_uri()
 
 		// Otherwise I am not aware of a work around...
 		else
-			error('The web server you are using is not correctly setting the REQUEST_URI variable. This usually means you are using IIS6, or an unpatched IIS7. Please either disable SEF URLs, upgrade to IIS7 and install any available patches or try a different web server.');
+			error('The web server you are using is not correctly setting the REQUEST_URI variable.<br />This usually means you are using IIS6, or an unpatched IIS7. Please either disable SEF URLs, upgrade to IIS7 and install any available patches or try a different web server.');
 	}
 }
+
+
 // Set a cookie, PunBB style!
 // Like other headers, cookies must be sent before any output from your script.
 // Use headers_sent() to ckeck wether HTTP headers has been sent already.
@@ -404,6 +471,8 @@ function format_time($timestamp, $type = FORUM_FT_DATETIME, $date_format = null,
 	if ($type == FORUM_FT_DATETIME || $type == FORUM_FT_TIME)
 		$formatted_time .= gmdate($time_format, $timestamp);
 
+	($hook = get_hook('fn_format_time_end')) ? eval($hook) : null;
+
 	return $formatted_time;
 }
 
@@ -449,8 +518,8 @@ function generate_navlinks()
 		{
 			$links['search'] = '<li id="navsearch"'.((FORUM_PAGE == 'search') ? ' class="isactive"' : '').'><a href="'.forum_link($forum_url['search']).'">'.$lang_common['Search'].'</a></li>';
 			$links['profile'] = '<li id="navprofile"'.((substr(FORUM_PAGE, 0, 7) == 'profile') ? ' class="isactive"' : '').'><a href="'.forum_link($forum_url['user'], $forum_user['id']).'">'.$lang_common['Profile'].'</a></li>';
-			$links['logout'] = '<li id="navlogout"><a href="'.forum_link($forum_url['logout'], array($forum_user['id'], generate_form_token('logout'.$forum_user['id']))).'">'.$lang_common['Logout'].'</a></li>';
 			$links['admin'] = '<li id="navadmin"'.((substr(FORUM_PAGE, 0, 5) == 'admin') ? ' class="isactive"' : '').'><a href="'.forum_link($forum_url['admin_index']).'">'.$lang_common['Admin'].'</a></li>';
+			$links['logout'] = '<li id="navlogout"><a href="'.forum_link($forum_url['logout'], array($forum_user['id'], generate_form_token('logout'.$forum_user['id']))).'">'.$lang_common['Logout'].'</a></li>';
 		}
 	}
 
@@ -469,27 +538,56 @@ function generate_navlinks()
 }
 
 
+
 // Outputs markup to display a user's avatar
-function generate_avatar_markup($user_id)
+function generate_avatar_markup($user_id, $avatar_type, $avatar_width, $avatar_height, $username = NULL, $drop_cache = FALSE)
 {
 	global $forum_config, $base_url;
 
-	$filetypes = array('jpg', 'gif', 'png');
-	$avatar_markup = '';
+	$avatar_markup = $avatar_filename = '';
 
 	$return = ($hook = get_hook('fn_generate_avatar_markup_start')) ? eval($hook) : null;
 	if ($return != null)
 		return $return;
 
-	foreach ($filetypes as $cur_type)
-	{
-		$path = $forum_config['o_avatars_dir'].'/'.$user_id.'.'.$cur_type;
 
-		if (file_exists(FORUM_ROOT.$path) && $img_size = @getimagesize(FORUM_ROOT.$path))
-		{
-			$avatar_markup = '<img src="'.$base_url.'/'.$path.'" '.$img_size[3].' alt="" />';
+	// Create avatar filename
+	switch ($avatar_type)
+	{
+		case FORUM_AVATAR_GIF:
+			$avatar_filename = $user_id.'.gif';
 			break;
+
+		case FORUM_AVATAR_JPG:
+			$avatar_filename = $user_id.'.jpg';
+			break;
+
+		case FORUM_AVATAR_PNG:
+			$avatar_filename = $user_id.'.png';
+			break;
+
+		case FORUM_AVATAR_NONE:
+		default:
+			break;
+	}
+
+	// Create markup
+	if ($avatar_filename && $avatar_width > 0 && $avatar_height > 0)
+	{
+		$path = $forum_config['o_avatars_dir'].'/'.$avatar_filename;
+
+		//
+		if ($drop_cache)
+		{
+			$path .= '?no_cache='.random_key(8, TRUE);
 		}
+
+		$alt_attr = '';
+		if (is_string($username) && utf8_strlen($username) > 0) {
+			$alt_attr = forum_htmlencode($username);
+		}
+
+		$avatar_markup = '<img src="'.$base_url.'/'.$path.'" width="'.$avatar_width.'" height="'.$avatar_height.'" alt="'.$alt_attr.'" />';
 	}
 
 	($hook = get_hook('fn_generate_avatar_markup_end')) ? eval($hook) : null;
@@ -544,7 +642,7 @@ function generate_items_info($label, $first, $total)
 		return $return;
 
 	if ($forum_page['num_pages'] == 1)
-		$item_info =  '<span class="item-info">'.sprintf($lang_common['Item info single'], $label, forum_number_format($total)).'</span>';
+		$item_info = '<span class="item-info">'.sprintf($lang_common['Item info single'], $label, forum_number_format($total)).'</span>';
 	else
 		$item_info = '<span class="item-info">'.sprintf($lang_common['Item info plural'], $label, forum_number_format($first), forum_number_format($forum_page['finish_at']), forum_number_format($total)).'</span>';
 
@@ -555,9 +653,17 @@ function generate_items_info($label, $first, $total)
 
 
 // Generate a string with numbered links (for multipage scripts)
-function paginate($num_pages, $cur_page, $link, $separator, $args = null)
+function paginate($num_pages, $cur_page, $link, $separator, $args = null, $is_default_scheme = null)
 {
 	global $forum_url, $lang_common;
+
+	if ($is_default_scheme == null)
+		$forum_url_page = $forum_url['page'];
+	else
+	{
+		$forum_url_page = '&amp;p=$1';
+		unset($forum_url['insertion_find']);
+	}
 
 	$pages = array();
 	$link_to_all = false;
@@ -574,16 +680,16 @@ function paginate($num_pages, $cur_page, $link, $separator, $args = null)
 	}
 
 	if ($num_pages <= 1)
-		$pages = array('<strong class="first-item">1</strong>');
+		$pages = array('<strong class="first-item">'.forum_number_format(1).'</strong>');
 	else
 	{
 		// Add a previous page link
 		if ($num_pages > 1 && $cur_page > 1)
-			$pages[] = '<a'.(empty($pages) ? ' class="first-item"' : '').' href="'.forum_sublink($link, $forum_url['page'], ($cur_page - 1), $args).'">'.$lang_common['Previous'].'</a>';
+			$pages[] = '<a'.(empty($pages) ? ' class="first-item"' : '').' href="'.forum_sublink($link, $forum_url_page, ($cur_page - 1), $args).'">'.$lang_common['Previous'].'</a>';
 
 		if ($cur_page > 3)
 		{
-			$pages[] = '<a'.(empty($pages) ? ' class="first-item"' : '').' href="'.forum_sublink($link, $forum_url['page'], 1, $args).'">1</a>';
+			$pages[] = '<a'.(empty($pages) ? ' class="first-item"' : '').' href="'.forum_sublink($link, $forum_url_page, 1, $args).'">'.forum_number_format(1).'</a>';
 
 			if ($cur_page > 5)
 				$pages[] = '<span>'.$lang_common['Spacer'].'</span>';
@@ -594,7 +700,7 @@ function paginate($num_pages, $cur_page, $link, $separator, $args = null)
 			if ($current < 1 || $current > $num_pages)
 				continue;
 			else if ($current != $cur_page || $link_to_all)
-				$pages[] = '<a'.(empty($pages) ? ' class="first-item" ' : '').' href="'.forum_sublink($link, $forum_url['page'], $current, $args).'">'.forum_number_format($current).'</a>';
+				$pages[] = '<a'.(empty($pages) ? ' class="first-item"' : '').' href="'.forum_sublink($link, $forum_url_page, $current, $args).'">'.forum_number_format($current).'</a>';
 			else
 				$pages[] = '<strong'.(empty($pages) ? ' class="first-item"' : '').'>'.forum_number_format($current).'</strong>';
 
@@ -603,12 +709,12 @@ function paginate($num_pages, $cur_page, $link, $separator, $args = null)
 			if ($cur_page != ($num_pages-3) && $cur_page != ($num_pages-4))
 				$pages[] = '<span>'.$lang_common['Spacer'].'</span>';
 
-			$pages[] = '<a'.(empty($pages) ? ' class="first-item" ' : '').' href="'.forum_sublink($link, $forum_url['page'], $num_pages, $args).'">'.forum_number_format($num_pages).'</a>';
+			$pages[] = '<a'.(empty($pages) ? ' class="first-item"' : '').' href="'.forum_sublink($link, $forum_url_page, $num_pages, $args).'">'.forum_number_format($num_pages).'</a>';
 		}
 
 		// Add a next page link
 		if ($num_pages > 1 && !$link_to_all && $cur_page < $num_pages)
-			$pages[] = '<a'.(empty($pages) ? ' class="first-item" ' : '').' href="'.forum_sublink($link, $forum_url['page'], ($cur_page + 1), $args).'">'.$lang_common['Next'].'</a>';
+			$pages[] = '<a'.(empty($pages) ? ' class="first-item"' : '').' href="'.forum_sublink($link, $forum_url_page, ($cur_page + 1), $args).'">'.$lang_common['Next'].'</a>';
 	}
 
 	($hook = get_hook('fn_paginate_end')) ? eval($hook) : null;
@@ -629,13 +735,9 @@ function get_saved_queries()
 
 ?>
 <div id="brd-debug" class="main">
-
-	<div class="main-head">
-		<h2 class="hn"><span><?php echo $lang_common['Debug table'] ?></span></h2>
-	</div>
-
-	<div class="main-content debug">
-		<table cellspacing="0" summary="<?php echo $lang_common['Debug summary'] ?>">
+	<div class="debug">
+		<table>
+			<caption><?php echo $lang_common['Debug summary'] ?></caption>
 			<thead>
 				<tr>
 					<th class="tcl" scope="col"><?php echo $lang_common['Query times'] ?></th>
@@ -660,9 +762,9 @@ function get_saved_queries()
 	}
 
 ?>
-				<tr class="totals">
-					<td class="tcl"><em><?php echo forum_number_format($query_time_total, 5) ?></em></td>
-					<td class="tcr"><em><?php echo $lang_common['Total query time'] ?></em></td>
+				<tr>
+					<td class="tcl border-less"><?php echo forum_number_format($query_time_total, 5) ?></td>
+					<td class="tcr border-less"><?php echo $lang_common['Total query time'] ?></td>
 				</tr>
 			</tbody>
 		</table>
@@ -685,6 +787,7 @@ function get_hook($hook_id)
 
 	return !defined('FORUM_DISABLE_HOOKS') && isset($forum_hooks[$hook_id]) ? implode("\n", $forum_hooks[$hook_id]) : false;
 }
+
 
 // Generate a hyperlink with parameters and anchor
 function forum_link($link, $args = null)
@@ -743,13 +846,15 @@ function forum_sublink($link, $sublink, $subarg, $args = null)
 
 	return $gen_link;
 }
+
+
 // Make a string safe to use in a URL
 function sef_friendly($str)
 {
 	global $forum_config, $forum_user;
 	static $lang_url_replace, $forum_reserved_strings;
 
-	if (!isset($lang_replace))
+	if (!isset($lang_url_replace))
 		require FORUM_ROOT.'lang/'.$forum_user['language'].'/url_replace.php';
 
 	if (!isset($forum_reserved_strings))
@@ -772,16 +877,17 @@ function sef_friendly($str)
 	foreach ($forum_reserved_strings as $match => $replace)
 		if ($str == $match)
 			return $replace;
+		else if ($match != '')
+			$str = str_replace($match, $replace, $str);
 
 	return $str;
 }
 
 
-// Replace censored words in $text
+// Replace censored words in $text loader
 function censor_words($text)
 {
-	global $forum_db;
-	static $search_for, $replace_with;
+	global $forum_db, $forum_censors;
 
 	$return = ($hook = get_hook('fn_censor_words_start')) ? eval($hook) : null;
 	if ($return != null)
@@ -801,21 +907,60 @@ function censor_words($text)
 			generate_censors_cache();
 			require FORUM_CACHE_DIR.'cache_censors.php';
 		}
+	}
 
+	// Check Unicode support
+	$unicode = defined('FORUM_SUPPORT_PCRE_UNICODE');
+
+	return (isset($forum_censors)) ? censor_words_do($forum_censors, $text, $unicode) : $text;
+}
+
+
+// Replace censored words in $text
+function censor_words_do($forum_censors, $text, $unicode)
+{
+	static $search_for = NULL;
+	static $replace_with = NULL;
+
+	if (is_null($search_for))
 		$search_for = array();
+
+	if (is_null($replace_with))
 		$replace_with = array();
 
+
+	if (!empty($forum_censors))
+	{
+		// Generate regexp`s
 		foreach ($forum_censors as $censor_key => $cur_word)
 		{
-			$search_for[$censor_key] = '/(?<=\W)('.str_replace('\*', '\w*?', preg_quote($cur_word['search_for'], '/')).')(?=\W)/iu';
+			if ($unicode)
+			{
+				// Unescape *
+				$replace = str_replace('\*', '*', preg_quote($cur_word['search_for'], '#'));
+				$replace = preg_replace(array('#(?<=[\p{Nd}\p{L}_])\*(?=[\p{Nd}\p{L}_])#iu', '#^\*#', '#\*$#'), array('([\x20]*?|[\p{Nd}\p{L}_-]*?)', '[\p{Nd}\p{L}_-]*?', '[\p{Nd}\p{L}_-]*?'), $replace);
+
+				// Generate the final substitution
+				$search_for[$censor_key] = '#(?<![\p{Nd}\p{L}_-])('.$replace.')(?![\p{Nd}\p{L}_-])#iu';
+			}
+			else
+			{
+				// Unescape *
+				$replace = str_replace('\*', '\w*?', preg_quote($cur_word['search_for'], '#'));
+				$search_for[$censor_key] = '#(?<=\W)('.$replace.')(?=\W)#iu'; // This better for ASCII than (?!</S)
+			}
+
 			$replace_with[$censor_key] = $cur_word['replace_with'];
 
 			($hook = get_hook('fn_censor_words_setup_regex')) ? eval($hook) : null;
 		}
-	}
 
-	if (!empty($search_for))
-		$text = utf8_substr(preg_replace($search_for, $replace_with, ' '.$text.' '), 1, -1);
+		// Replace
+		if (!empty($search_for))
+		{
+			$text = utf8_substr(preg_replace($search_for, $replace_with, ' '.$text.' '), 1, -1);
+		}
+	}
 
 	return $text;
 }
@@ -936,13 +1081,13 @@ function get_title($user)
 // Return a list of all URL schemes installed
 function get_scheme_packs()
 {
-  	$schemes = array();
-	
-	if($handle = opendir(FORUM_ROOT.'include/url'))
+	$schemes = array();
+
+	if ($handle = opendir(FORUM_ROOT.'include/url'))
 	{
 		while (false !== ($dirname = readdir($handle)))
 		{
-			$dirname =  FORUM_ROOT.'include/url/'.$dirname;
+			$dirname = FORUM_ROOT.'include/url/'.$dirname;
 			if (is_dir($dirname) && file_exists($dirname.'/forum_urls.php'))
 				$schemes[] = basename($dirname);
 		}
@@ -959,12 +1104,12 @@ function get_scheme_packs()
 function get_style_packs()
 {
 	$styles = array();
-	
-	if($handle = opendir(FORUM_ROOT.'style'))
+
+	if ($handle = opendir(FORUM_ROOT.'style'))
 	{
 		while (false !== ($dirname = readdir($handle)))
 		{
-			$dirname =  FORUM_ROOT.'style/'.$dirname;
+			$dirname = FORUM_ROOT.'style/'.$dirname;
 			$tempname = basename($dirname);
 			if (is_dir($dirname) && file_exists($dirname.'/'.$tempname.'.php'))
 				$styles[] = $tempname;
@@ -983,11 +1128,11 @@ function get_language_packs()
 {
 	$languages = array();
 
-	if($handle = opendir(FORUM_ROOT.'lang'))
+	if ($handle = opendir(FORUM_ROOT.'lang'))
 	{
 		while (false !== ($dirname = readdir($handle)))
 		{
-			$dirname =  FORUM_ROOT.'lang/'.$dirname;
+			$dirname = FORUM_ROOT.'lang/'.$dirname;
 			if (is_dir($dirname) && file_exists($dirname.'/common.php'))
 				$languages[] = basename($dirname);
 		}
@@ -1029,6 +1174,8 @@ function get_current_url($max_length = 0)
 	// We can't find a short enough url
 	return null;
 }
+
+
 // Checks if a word is a valid searchable word
 function validate_search_word($word)
 {
@@ -1116,6 +1263,8 @@ function forum_hash($str, $salt)
 
 	return sha1($salt.sha1($str));
 }
+
+
 // Delete every .php file in the forum's cache directory
 function forum_clear_cache()
 {
@@ -1124,12 +1273,15 @@ function forum_clear_cache()
 		return;
 
 	$d = dir(FORUM_CACHE_DIR);
-	while (($entry = $d->read()) !== false)
+	if ($d)
 	{
-		if (substr($entry, strlen($entry)-4) == '.php')
-			@unlink(FORUM_CACHE_DIR.$entry);
+		while (($entry = $d->read()) !== false)
+		{
+			if (substr($entry, strlen($entry)-4) == '.php')
+				@unlink(FORUM_CACHE_DIR.$entry);
+		}
+		$d->close();
 	}
-	$d->close();
 }
 
 
@@ -1300,7 +1452,7 @@ function cookie_login(&$forum_user)
 				);
 
 				$current_url = get_current_url(255);
-				if ($current_url != null)
+				if ($current_url != null && !defined('FORUM_REQUEST_AJAX'))
 					$query['SET'] .= ', prev_url=\''.$forum_db->escape($current_url).'\'';
 
 				if ($forum_user['idle'] == '1')
@@ -1355,10 +1507,10 @@ function set_default_user()
 
 	($hook = get_hook('fn_set_default_user_qr_get_default_user')) ? eval($hook) : null;
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
-	if (!$forum_db->num_rows($result))
-		exit('Unable to fetch guest information. The table \''.$forum_db->prefix.'users\' must contain an entry with id = 1 that represents anonymous users.');
-
 	$forum_user = $forum_db->fetch_assoc($result);
+
+	if (!$forum_user)
+		exit('Unable to fetch guest information. The table \''.$forum_db->prefix.'users\' must contain an entry with id = 1 that represents anonymous users.');
 
 	if (!defined('FORUM_QUIET_VISIT'))
 	{
@@ -1457,6 +1609,9 @@ function check_bans()
 		if ($cur_ban['username'] != '' && utf8_strtolower($forum_user['username']) == utf8_strtolower($cur_ban['username']))
 			$is_banned = true;
 
+		if ($cur_ban['email'] != '' && $forum_user['email'] == $cur_ban['email'])
+			$is_banned = true;
+
 		if ($cur_ban['ip'] != '')
 		{
 			$cur_ban_ips = explode(' ', $cur_ban['ip']);
@@ -1514,32 +1669,25 @@ function update_users_online()
 	if ($return != null)
 		return;
 
+
 	// Fetch all online list entries that are older than "o_timeout_online"
 	$query = array(
 		'SELECT'	=> 'o.*',
 		'FROM'		=> 'online AS o',
-		'WHERE'		=> 'o.logged<'.($now-$forum_config['o_timeout_online'])
+		'WHERE'		=> 'o.logged < '.($now - $forum_config['o_timeout_online'])
 	);
 
 	($hook = get_hook('fn_update_users_online_qr_get_old_online_users')) ? eval($hook) : null;
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
+
+	$need_delete_expired_guest = false;
+	$expired_users_id = $idle_users_id = array();
 	while ($cur_user = $forum_db->fetch_assoc($result))
 	{
-		// If the entry is a guest, delete it
-		if ($cur_user['user_id'] == '1')
-		{
-			$query = array(
-				'DELETE'	=> 'online',
-				'WHERE'		=> 'ident=\''.$forum_db->escape($cur_user['ident']).'\''
-			);
-
-			($hook = get_hook('fn_update_users_online_qr_delete_online_guest_user')) ? eval($hook) : null;
-			$forum_db->query_build($query) or error(__FILE__, __LINE__);
-		}
-		else
+		if ($cur_user['user_id'] != '1')
 		{
 			// If the entry is older than "o_timeout_visit", update last_visit for the user in question, then delete him/her from the online list
-			if ($cur_user['idle'] != '0')
+			if ($cur_user['logged'] < ($now - $forum_config['o_timeout_visit']))
 			{
 				$query = array(
 					'UPDATE'	=> 'users',
@@ -1550,26 +1698,60 @@ function update_users_online()
 				($hook = get_hook('fn_update_users_online_qr_update_user_visit')) ? eval($hook) : null;
 				$forum_db->query_build($query) or error(__FILE__, __LINE__);
 
-				$query = array(
-					'DELETE'	=> 'online',
-					'WHERE'		=> 'user_id='.$cur_user['user_id']
-				);
-
-				($hook = get_hook('fn_update_users_online_qr_delete_online_user')) ? eval($hook) : null;
-				$forum_db->query_build($query) or error(__FILE__, __LINE__);
+				// Add to expired list
+				$expired_users_id[] = $cur_user['user_id'];
 			}
 			else
 			{
-				$query = array(
-					'UPDATE'	=> 'online',
-					'SET'		=> 'idle=1',
-					'WHERE'		=> 'user_id='.$cur_user['user_id']
-				);
-
-				($hook = get_hook('fn_update_users_online_qr_update_user_idle')) ? eval($hook) : null;
-				$forum_db->query_build($query) or error(__FILE__, __LINE__);
+				// Add to idle list
+				if ($cur_user['idle'] == '0')
+				{
+					$idle_users_id[] = $cur_user['user_id'];
+				}
 			}
 		}
+		else
+		{
+			// We have expired guest — delete it later
+			$need_delete_expired_guest = true;
+		}
+	}
+
+	// Remove all guest that are older than "o_timeout_online"
+	if ($need_delete_expired_guest)
+	{
+		$query = array(
+			'DELETE'	=> 'online',
+			'WHERE'		=> 'user_id=1 AND logged < '.($now - $forum_config['o_timeout_online'])
+		);
+		($hook = get_hook('fn_update_users_online_qr_delete_online_guest_user')) ? eval($hook) : null;
+		$forum_db->query_build($query) or error(__FILE__, __LINE__);
+	}
+
+
+	// Delete expired users
+	if (!empty($expired_users_id))
+	{
+		$query = array(
+			'DELETE'	=> 'online',
+			'WHERE'		=> 'user_id IN ('.implode(',', $expired_users_id).')'
+		);
+
+		($hook = get_hook('fn_update_users_online_qr_delete_online_user')) ? eval($hook) : null;
+		$forum_db->query_build($query) or error(__FILE__, __LINE__);
+	}
+
+	// Update idle users
+	if (!empty($idle_users_id))
+	{
+		$query = array(
+			'UPDATE'	=> 'online',
+			'SET'		=> 'idle=1',
+			'WHERE'		=> 'user_id IN ('.implode(',', $idle_users_id).')'
+		);
+
+		($hook = get_hook('fn_update_users_online_qr_update_user_idle')) ? eval($hook) : null;
+		$forum_db->query_build($query) or error(__FILE__, __LINE__);
 	}
 
 	($hook = get_hook('fn_update_users_online_end')) ? eval($hook) : null;
@@ -1744,6 +1926,15 @@ function delete_user($user_id, $delete_posts = false)
 	($hook = get_hook('fn_delete_user_qr_delete_subscriptions')) ? eval($hook) : null;
 	$forum_db->query_build($query) or error(__FILE__, __LINE__);
 
+	// Delete any subscriptions forum
+	$query = array(
+		'DELETE'	=> 'forum_subscriptions',
+		'WHERE'		=> 'user_id='.$user_id
+	);
+
+	($hook = get_hook('fn_delete_user_qr_delete_forum_subscriptions')) ? eval($hook) : null;
+	$forum_db->query_build($query) or error(__FILE__, __LINE__);
+
 	// Remove him/her from the online list (if they happen to be logged in)
 	$query = array(
 		'DELETE'	=> 'online',
@@ -1843,15 +2034,16 @@ function check_username_dupe($username, $exclude_id = null)
 
 	($hook = get_hook('fn_check_username_dupe_qr_check_username_dupe')) ? eval($hook) : null;
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
+	$dupe_name = $forum_db->result($result);
 
-	return $forum_db->num_rows($result) ? $forum_db->result($result) : false;
+	return (is_null($dupe_name) || $dupe_name === false) ? false : $dupe_name;
 }
 
 
 // Deletes any avatars owned by the specified user ID
 function delete_avatar($user_id)
 {
-	global $forum_config;
+	global $forum_db, $db_type, $forum_config;
 
 	$filetypes = array('jpg', 'gif', 'png');
 
@@ -1859,10 +2051,25 @@ function delete_avatar($user_id)
 	if ($return != null)
 		return;
 
-	// Delete user avatar
+	// Delete user avatar from FS
 	foreach ($filetypes as $cur_type)
-		@unlink(FORUM_ROOT.$forum_config['o_avatars_dir'].'/'.$user_id.'.'.$cur_type);
+	{
+		$avatar = FORUM_ROOT.$forum_config['o_avatars_dir'].'/'.$user_id.'.'.$cur_type;
+		if (file_exists($avatar))
+		{
+			@unlink($avatar);
+		}
+	}
 
+	// Delete user avatar from DB
+	$query = array(
+		'UPDATE'	=> 'users',
+		'SET'		=> 'avatar=\''.FORUM_AVATAR_NONE.'\', avatar_height=\'0\', avatar_width=\'0\'',
+		'WHERE'		=> 'id='.$user_id
+	);
+
+	($hook = get_hook('fn_delete_avatar_qr_delete_avatar')) ? eval($hook) : null;
+	$forum_db->query_build($query) or error(__FILE__, __LINE__);
 }
 
 
@@ -1934,6 +2141,8 @@ function add_topic($post_info, &$new_tid, &$new_pid)
 
 	sync_forum($post_info['forum_id']);
 
+	send_forum_subscriptions($post_info, $new_tid);
+
 	// Increment user's post count & last post time
 	if (isset($post_info['update_user']) && $post_info['update_user'])
 	{
@@ -1989,8 +2198,8 @@ function delete_topic($topic_id, $forum_id)
 
 	($hook = get_hook('fn_delete_topic_qr_get_forums_to_sync')) ? eval($hook) : null;
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
-	while ($row = $forum_db->fetch_row($result))
-		$forum_ids[] = $row[0];
+	while ($row = $forum_db->fetch_assoc($result))
+		$forum_ids[] = $row['forum_id'];
 
 	// Delete the topic and any redirect topics
 	$query = array(
@@ -2012,8 +2221,8 @@ function delete_topic($topic_id, $forum_id)
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
 
 	$post_ids = array();
-	while ($row = $forum_db->fetch_row($result))
-		$post_ids[] = $row[0];
+	while ($row = $forum_db->fetch_assoc($result))
+		$post_ids[] = $row['id'];
 
 	// Make sure we have a list of post ID's
 	if (!empty($post_ids))
@@ -2073,13 +2282,15 @@ function delete_orphans()
 
 	($hook = get_hook('fn_delete_orphans_qr_get_orphans')) ? eval($hook) : null;
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
-	$num_orphans = $forum_db->num_rows($result);
 
-	if ($num_orphans)
+	$orphans = array();
+	while ($row = $forum_db->fetch_assoc($result))
 	{
-		for ($i = 0; $i < $num_orphans; ++$i)
-			$orphans[] = $forum_db->result($result, $i);
+		$orphans[] = $row['id'];
+	}
 
+	if (!empty($orphans))
+	{
 		// Delete the orphan
 		$query = array(
 			'DELETE'	=> 'topics',
@@ -2258,7 +2469,7 @@ function delete_post($post_id, $topic_id, $forum_id)
 
 	($hook = get_hook('fn_qr_get_topic_reply_count2')) ? eval($hook) : null;
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
-	$num_replies = $forum_db->result($result, 0) - 1;
+	$num_replies = $forum_db->result($result) - 1;
 
 	// Update the topic now that a post has been deleted
 	$query = array(
@@ -2291,16 +2502,18 @@ function sync_forum($forum_id)
 
 	// Get topic and post count for forum
 	$query = array(
-		'SELECT'	=> 'COUNT(t.id), SUM(t.num_replies)',
+		'SELECT'	=> 'COUNT(t.id) AS num_topics, SUM(t.num_replies) AS num_posts',
 		'FROM'		=> 'topics AS t',
 		'WHERE'		=> 't.forum_id='.$forum_id
 	);
 
 	($hook = get_hook('fn_sync_forum_qr_get_forum_stats')) ? eval($hook) : null;
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
-	list($num_topics, $num_posts) = $forum_db->fetch_row($result);
+	$forum_stats = $forum_db->fetch_assoc($result);
 
-	$num_posts = $num_posts + $num_topics;		// $num_posts is only the sum of all replies (we have to add the topic posts)
+	// $num_posts is only the sum of all replies (we have to add the topic posts)
+	$forum_stats['num_posts'] = $forum_stats['num_posts'] + $forum_stats['num_topics'];
+
 
 	// Get last_post, last_post_id and last_poster for forum (if any)
 	$query = array(
@@ -2313,18 +2526,19 @@ function sync_forum($forum_id)
 
 	($hook = get_hook('fn_sync_forum_qr_get_forum_last_post_data')) ? eval($hook) : null;
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
-	if ($forum_db->num_rows($result))
+	$last_post_info = $forum_db->fetch_assoc($result);
+
+	if ($last_post_info)
 	{
-		list($last_post, $last_post_id, $last_poster) = $forum_db->fetch_row($result);
-		$last_poster = '\''.$forum_db->escape($last_poster).'\'';
+		$last_post_info['last_poster'] = '\''.$forum_db->escape($last_post_info['last_poster']).'\'';
 	}
 	else
-		$last_post = $last_post_id = $last_poster = 'NULL';
+		$last_post_info['last_post'] = $last_post_info['last_post_id'] = $last_post_info['last_poster'] = 'NULL';
 
 	// Now update the forum
 	$query = array(
 		'UPDATE'	=> 'forums',
-		'SET'		=> 'num_topics='.$num_topics.', num_posts='.$num_posts.', last_post='.$last_post.', last_post_id='.$last_post_id.', last_poster='.$last_poster,
+		'SET'		=> 'num_topics='.$forum_stats['num_topics'].', num_posts='.$forum_stats['num_posts'].', last_post='.$last_post_info['last_post'].', last_post_id='.$last_post_info['last_post_id'].', last_poster='.$last_post_info['last_poster'],
 		'WHERE'		=> 'id='.$forum_id
 	);
 
@@ -2353,7 +2567,7 @@ function sync_topic($topic_id)
 
 	($hook = get_hook('fn_sync_topic_qr_get_topic_reply_count')) ? eval($hook) : null;
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
-	$num_replies = $forum_db->result($result, 0) - 1;
+	$num_replies = $forum_db->result($result) - 1;
 
 	// Get last_post, last_post_id and last_poster
 	$query = array(
@@ -2366,12 +2580,12 @@ function sync_topic($topic_id)
 
 	($hook = get_hook('fn_sync_topic_qr_get_topic_last_post_data')) ? eval($hook) : null;
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
-	list($last_post, $last_post_id, $last_poster) = $forum_db->fetch_row($result);
+	$last_post_info = $forum_db->fetch_assoc($result);
 
 	// Now update the topic
 	$query = array(
 		'UPDATE'	=> 'topics',
-		'SET'		=> 'num_replies='.$num_replies.', last_post='.$last_post.', last_post_id='.$last_post_id.', last_poster=\''.$forum_db->escape($last_poster).'\'',
+		'SET'		=> 'num_replies='.$num_replies.', last_post='.$last_post_info['posted'].', last_post_id='.$last_post_info['id'].', last_poster=\''.$forum_db->escape($last_post_info['poster']).'\'',
 		'WHERE'		=> 'id='.$topic_id
 	);
 
@@ -2417,7 +2631,7 @@ function clean_forum_moderators()
 			}
 
 			$query = array(
-				'SELECT'	=> '1',
+				'SELECT'	=> 'COUNT(u.id)',
 				'FROM'		=> 'users AS u',
 				'JOINS'		=> array(
 					array(
@@ -2430,8 +2644,7 @@ function clean_forum_moderators()
 
 			($hook = get_hook('fn_clean_forum_moderators_qr_check_user_in_moderator_group')) ? eval($hook) : null;
 			$result2 = $forum_db->query_build($query) or error(__FILE__, __LINE__);
-
-			if (!$forum_db->num_rows($result2))	// If the user isn't in a moderator or admin group, remove him/her from the list
+			if ($forum_db->result($result2) < 1)	// If the user isn't in a moderator or admin group, remove him/her from the list
 			{
 				unset($new_moderators[$username]);
 				$removed_moderators[] = $user_id;
@@ -2511,7 +2724,13 @@ function send_subscriptions($post_info, $new_pid)
 	($hook = get_hook('fn_send_subscriptions_qr_get_users_to_notify')) ? eval($hook) : null;
 	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
 
-	if ($forum_db->num_rows($result))
+	$subscribers = array();
+	while ($row = $forum_db->fetch_assoc($result))
+	{
+		$subscribers[] = $row;
+	}
+
+	if (!empty($subscribers))
 	{
 		if (!defined('FORUM_EMAIL_FUNCTIONS_LOADED'))
 			require FORUM_ROOT.'include/email.php';
@@ -2519,7 +2738,7 @@ function send_subscriptions($post_info, $new_pid)
 		$notification_emails = array();
 
 		// Loop through subscribed users and send e-mails
-		while ($cur_subscriber = $forum_db->fetch_assoc($result))
+		foreach ($subscribers as $cur_subscriber)
 		{
 			// Is the subscription e-mail for $cur_subscriber['language'] cached or not?
 			if (!isset($notification_emails[$cur_subscriber['language']]) && file_exists(FORUM_ROOT.'lang/'.$cur_subscriber['language'].'/mail_templates/new_reply.tpl'))
@@ -2578,6 +2797,120 @@ function send_subscriptions($post_info, $new_pid)
 }
 
 
+// Send out subscription emails
+function send_forum_subscriptions($topic_info, $new_tid)
+{
+	global $forum_config, $forum_db, $forum_url, $lang_common;
+
+	$return = ($hook = get_hook('fn_send_forum_subscriptions_start')) ? eval($hook) : null;
+	if ($return != null)
+		return;
+
+	if ($forum_config['o_subscriptions'] != '1')
+		return;
+
+	// Get any subscribed users that should be notified (banned users are excluded)
+	$query = array(
+		'SELECT'	=> 'u.id, u.email, u.notify_with_post, u.language',
+		'FROM'		=> 'users AS u',
+		'JOINS'		=> array(
+			array(
+				'INNER JOIN'	=> 'forum_subscriptions AS fs',
+				'ON'			=> 'u.id=fs.user_id'
+			),
+			array(
+				'LEFT JOIN'		=> 'forum_perms AS fp',
+				'ON'			=> '(fp.forum_id='.$topic_info['forum_id'].' AND fp.group_id=u.group_id)'
+			),
+			array(
+				'LEFT JOIN'		=> 'online AS o',
+				'ON'			=> 'u.id=o.user_id'
+			),
+			array(
+				'LEFT JOIN'		=> 'bans AS b',
+				'ON'			=> 'u.username=b.username'
+			),
+		),
+		'WHERE'		=> 'b.username IS NULL AND (fp.read_forum IS NULL OR fp.read_forum=1) AND fs.forum_id='.$topic_info['forum_id'].' AND u.id!='.$topic_info['poster_id']
+	);
+
+	($hook = get_hook('fn_send_forum_subscriptions_qr_get_users_to_notify')) ? eval($hook) : null;
+	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
+
+	$subscribers = array();
+	while ($row = $forum_db->fetch_assoc($result))
+	{
+		$subscribers[] = $row;
+	}
+
+	if (!empty($subscribers))
+	{
+		if (!defined('FORUM_EMAIL_FUNCTIONS_LOADED'))
+			require FORUM_ROOT.'include/email.php';
+
+		$notification_emails = array();
+
+		// Loop through subscribed users and send e-mails
+		foreach ($subscribers as $cur_subscriber)
+		{
+			// Is the subscription e-mail for $cur_subscriber['language'] cached or not?
+			if (!isset($notification_emails[$cur_subscriber['language']]) && file_exists(FORUM_ROOT.'lang/'.$cur_subscriber['language'].'/mail_templates/new_topic.tpl'))
+			{
+				// Load the "new topic" template
+				$mail_tpl = forum_trim(file_get_contents(FORUM_ROOT.'lang/'.$cur_subscriber['language'].'/mail_templates/new_topic.tpl'));
+
+				// Load the "new topic full" template (with first post included)
+				$mail_tpl_full = forum_trim(file_get_contents(FORUM_ROOT.'lang/'.$cur_subscriber['language'].'/mail_templates/new_topic_full.tpl'));
+
+				// The first row contains the subject (it also starts with "Subject:")
+				$first_crlf = strpos($mail_tpl, "\n");
+				$mail_subject = forum_trim(substr($mail_tpl, 8, $first_crlf-8));
+				$mail_message = forum_trim(substr($mail_tpl, $first_crlf));
+
+				$first_crlf = strpos($mail_tpl_full, "\n");
+				$mail_subject_full = forum_trim(substr($mail_tpl_full, 8, $first_crlf-8));
+				$mail_message_full = forum_trim(substr($mail_tpl_full, $first_crlf));
+
+				$mail_subject = str_replace('<forum_name>', '\''.$topic_info['forum_name'].'\'', $mail_subject);
+				$mail_message = str_replace('<forum_name>', '\''.$topic_info['forum_name'].'\'', $mail_message);
+				$mail_message = str_replace('<topic_starter>', $topic_info['poster'], $mail_message);
+				$mail_message = str_replace('<topic_subject>', '\''.$topic_info['subject'].'\'', $mail_message);
+				$mail_message = str_replace('<topic_url>', forum_link($forum_url['topic'], array($new_tid, sef_friendly($topic_info['subject']))), $mail_message);
+				$mail_message = str_replace('<unsubscribe_url>', forum_link($forum_url['forum_unsubscribe'], array($topic_info['forum_id'], generate_form_token('forum_unsubscribe'.$topic_info['forum_id'].$cur_subscriber['id']))), $mail_message);
+				$mail_message = str_replace('<board_mailer>', sprintf($lang_common['Forum mailer'], $forum_config['o_board_title']), $mail_message);
+
+				$mail_subject_full = str_replace('<forum_name>', '\''.$topic_info['forum_name'].'\'', $mail_subject_full);
+				$mail_message_full = str_replace('<forum_name>', '\''.$topic_info['forum_name'].'\'', $mail_message_full);
+				$mail_message_full = str_replace('<topic_starter>', $topic_info['poster'], $mail_message_full);
+				$mail_message_full = str_replace('<topic_subject>', '\''.$topic_info['subject'].'\'', $mail_message_full);
+				$mail_message_full = str_replace('<message>', $topic_info['message'], $mail_message_full);
+				$mail_message_full = str_replace('<topic_url>', forum_link($forum_url['topic'], $new_tid), $mail_message_full);
+				$mail_message_full = str_replace('<unsubscribe_url>', forum_link($forum_url['forum_unsubscribe'], array($topic_info['forum_id'], generate_form_token('forum_unsubscribe'.$topic_info['forum_id'].$cur_subscriber['id']))), $mail_message_full);
+				$mail_message_full = str_replace('<board_mailer>', sprintf($lang_common['Forum mailer'], $forum_config['o_board_title']), $mail_message_full);
+
+				$notification_emails[$cur_subscriber['language']][0] = $mail_subject;
+				$notification_emails[$cur_subscriber['language']][1] = $mail_message;
+				$notification_emails[$cur_subscriber['language']][2] = $mail_subject_full;
+				$notification_emails[$cur_subscriber['language']][3] = $mail_message_full;
+
+				$mail_subject = $mail_message = $mail_subject_full = $mail_message_full = null;
+			}
+
+			// We have to double check here because the templates could be missing
+			// Make sure the e-mail address format is valid before sending
+			if (isset($notification_emails[$cur_subscriber['language']]) && is_valid_email($cur_subscriber['email']))
+			{
+				if ($cur_subscriber['notify_with_post'] == '0')
+					forum_mail($cur_subscriber['email'], $notification_emails[$cur_subscriber['language']][0], $notification_emails[$cur_subscriber['language']][1]);
+				else
+					forum_mail($cur_subscriber['email'], $notification_emails[$cur_subscriber['language']][2], $notification_emails[$cur_subscriber['language']][3]);
+			}
+		}
+	}
+
+	($hook = get_hook('fn_send_forum_subscriptions_end')) ? eval($hook) : null;
+}
+
 //
 // Special pages
 //
@@ -2586,7 +2919,7 @@ function send_subscriptions($post_info, $new_pid)
 // Used when the CSRF token from the request does not match the token stored in the database.
 function csrf_confirm_form()
 {
-	global $forum_db, $forum_url, $lang_common, $forum_config, $base_url, $forum_start, $tpl_main, $forum_user, $forum_page, $forum_updates;
+	global $forum_db, $forum_url, $lang_common, $forum_config, $base_url, $forum_start, $tpl_main, $forum_user, $forum_page, $forum_updates, $forum_flash, $forum_loader;
 
 	// If we've disabled the CSRF check for this page, we have nothing to do here.
 	if (defined('FORUM_DISABLE_CSRF_CONFIRM'))
@@ -2619,6 +2952,32 @@ function csrf_confirm_form()
 	if ($return != null)
 		return;
 
+	if (defined('FORUM_REQUEST_AJAX'))
+	{
+		$json_data = array(
+				'code'			=>	-3,
+				'message'		=>	$lang_common['CSRF token mismatch'],
+				'csrf_token'	=>	generate_form_token(get_current_url()),
+				'prev_url'		=>	forum_htmlencode($forum_user['prev_url']),
+		);
+
+		foreach ($_POST as $submitted_key => $submitted_val)
+		{
+			if ($submitted_key != 'csrf_token' && $submitted_key != 'prev_url')
+			{
+				$hidden_fields = _csrf_confirm_form($submitted_key, $submitted_val);
+				foreach ($hidden_fields as $field_key => $field_val)
+				{
+					$json_data['post_data'][$field_key] = forum_htmlencode($field_val);
+				}
+			}
+		}
+
+		($hook = get_hook('fn_redirect_pre_send_json')) ? eval($hook) : null;
+		
+		send_json($json_data);
+	}	
+	
 	// Setup breadcrumbs
 	$forum_page['crumbs'] = array(
 		array($forum_config['o_board_title'], forum_link($forum_url['index'])),
@@ -2657,12 +3016,12 @@ function csrf_confirm_form()
 		<div class="ct-box info-box">
 			<p><?php echo $lang_common['CSRF token mismatch'] ?></p>
 		</div>
-		<form class="frm-form" method="post" accept-charset="utf-8" action="<?php echo $forum_page['form_action'] ?>">
+		<form class="frm-form" method="post" accept-charset="utf-8" action="<?php echo forum_htmlencode($forum_page['form_action']) ?>">
 			<div class="hidden">
 				<?php echo implode("\n\t\t\t\t", $forum_page['hidden_fields'])."\n" ?>
 			</div>
 			<div class="frm-buttons">
-				<span class="submit"><input type="submit" value="<?php echo $lang_common['Confirm'] ?>" /></span>
+				<span class="submit primary"><input type="submit" value="<?php echo $lang_common['Confirm'] ?>" /></span>
 				<span class="cancel"><input type="submit" name="confirm_cancel" value="<?php echo $lang_common['Cancel'] ?>" /></span>
 			</div>
 		</form>
@@ -2684,9 +3043,21 @@ function csrf_confirm_form()
 // Display a message
 function message($message, $link = '', $heading = '')
 {
-	global $forum_db, $forum_url, $lang_common, $forum_config, $base_url, $forum_start, $tpl_main, $forum_user, $forum_page, $forum_updates;
+	global $forum_db, $forum_url, $lang_common, $forum_config, $base_url, $forum_start, $tpl_main, $forum_user, $forum_page, $forum_updates, $forum_loader, $forum_flash;
 
 	($hook = get_hook('fn_message_start')) ? eval($hook) : null;
+	
+	if (defined('FORUM_REQUEST_AJAX'))
+	{
+		$json_data = array(
+			'code'		=> -1,
+			'message'	=> $message
+		);
+
+		($hook = get_hook('fn_message_pre_send_json')) ? eval($hook) : null;
+		
+		send_json($json_data);
+	}
 
 	if (!defined('FORUM_HEADER'))
 	{
@@ -2737,12 +3108,10 @@ function message($message, $link = '', $heading = '')
 }
 
 
-
-
 // Display a message when board is in maintenance mode
 function maintenance_message()
 {
-	global $forum_db, $forum_config, $lang_common, $forum_user, $base_url;
+	global $forum_db, $forum_config, $lang_common, $forum_user, $base_url, $forum_loader;
 
 	$return = ($hook = get_hook('fn_maintenance_message_start')) ? eval($hook) : null;
 	if ($return != null)
@@ -2775,17 +3144,11 @@ function maintenance_message()
 	$tpl_maint = str_replace('<!-- forum_local -->', 'xml:lang="'.$lang_common['lang_identifier'].'" lang="'.$lang_common['lang_identifier'].'" dir="'.$lang_common['lang_direction'].'"', $tpl_maint);
 	// END SUBST - <!-- forum_local -->
 
-
 	// START SUBST - <!-- forum_head -->
 	ob_start();
 
-?>
-<title><?php echo $lang_common['Maintenance'].$lang_common['Title separator'].forum_htmlencode($forum_config['o_board_title']) ?></title>
-<link rel="stylesheet" type="text/css" media="screen" href="<?php echo $base_url ?>/style/<?php echo $forum_user['style'] ?>/<?php echo $forum_user['style'].'.css' ?>" />
-<link rel="stylesheet" type="text/css" media="screen" href="<?php echo $base_url ?>/style/<?php echo $forum_user['style'] ?>/<?php echo $forum_user['style'].'_cs.css' ?>" />
-<!--[if lte IE 6]><link rel="stylesheet" type="text/css" href="<?php echo $base_url ?>/style/<?php echo $forum_user['style'] ?>/<?php echo $forum_user['style'].'_fix.css' ?>" /><![endif]-->
-<!--[if IE 7]><link rel="stylesheet" type="text/css" href="<?php echo $base_url ?>/style/<?php echo $forum_user['style'] ?>/<?php echo $forum_user['style'].'_fix7.css' ?>" /><![endif]-->
-<?php
+	require FORUM_ROOT.'style/'.$forum_user['style'].'/'.$forum_user['style'].'.php';
+	echo $forum_loader->render_css();
 
 	$tpl_temp = forum_trim(ob_get_contents());
 	$tpl_maint = str_replace('<!-- forum_head -->', $tpl_temp, $tpl_maint);
@@ -2797,8 +3160,6 @@ function maintenance_message()
 	ob_start();
 
 ?>
-<div id="brd-maint" class="main basic">
-
 	<div class="main-head">
 		<h1 class="hn"><span><?php echo $lang_common['Maintenance mode'] ?></span></h1>
 	</div>
@@ -2807,8 +3168,6 @@ function maintenance_message()
 			<?php echo $message."\n" ?>
 		</div>
 	</div>
-
-</div>
 <?php
 
 	$tpl_temp = "\t".forum_trim(ob_get_contents());
@@ -2825,7 +3184,7 @@ function maintenance_message()
 	while (preg_match('#<!-- ?forum_include "([^/\\\\]*?)" ?-->#', $tpl_maint, $cur_include))
 	{
 		if (!file_exists(FORUM_ROOT.'include/user/'.$cur_include[1]))
-			error('Unable to process user include &lt;!-- forum_include "'.forum_htmlencode($cur_include[1]).'" --&gt; from template maintenance.tpl. There is no such file in folder /include/user/.');
+			error('Unable to process user include &lt;!-- forum_include "'.forum_htmlencode($cur_include[1]).'" --&gt; from template maintenance.tpl.<br />There is no such file in folder /include/user/.');
 
 		ob_start();
 		include FORUM_ROOT.'include/user/'.$cur_include[1];
@@ -2846,7 +3205,7 @@ function maintenance_message()
 // Display $message and redirect user to $destination_url
 function redirect($destination_url, $message)
 {
-	global $forum_db, $forum_config, $lang_common, $forum_user, $base_url;
+	global $forum_db, $forum_config, $lang_common, $forum_user, $base_url, $forum_loader;
 
 	define('FORUM_PAGE', 'redirect');
 
@@ -2859,6 +3218,19 @@ function redirect($destination_url, $message)
 	// Do a little spring cleaning
 	$destination_url = preg_replace('/([\r\n])|(%0[ad])|(;[\s]*data[\s]*:)/i', '', $destination_url);
 
+	if (defined('FORUM_REQUEST_AJAX'))
+	{
+		$json_data = array(
+			'code'		=> -2,
+			'message'	=> $message,
+			'destination_url' => $destination_url
+		);
+	
+		($hook = get_hook('fn_redirect_pre_send_json')) ? eval($hook) : null;
+		
+		send_json($json_data);
+	}	
+	
 	// If the delay is 0 seconds, we might as well skip the redirect all together
 	if ($forum_config['o_redirect_delay'] == '0')
 		header('Location: '.str_replace('&amp;', '&', $destination_url));
@@ -2888,9 +3260,7 @@ function redirect($destination_url, $message)
 	$tpl_redir = str_replace('<!-- forum_local -->', 'xml:lang="'.$lang_common['lang_identifier'].'" lang="'.$lang_common['lang_identifier'].'" dir="'.$lang_common['lang_direction'].'"', $tpl_redir);
 	// END SUBST - <!-- forum_local -->
 
-
 	// START SUBST - <!-- forum_head -->
-
 	$forum_head['refresh'] = '<meta http-equiv="refresh" content="'.$forum_config['o_redirect_delay'].';URL='.str_replace(array('<', '>', '"'), array('&lt;', '&gt;', '&quot;'), $destination_url).'" />';
 	$forum_head['title'] = '<title>'.$lang_common['Redirecting'].$lang_common['Title separator'].forum_htmlencode($forum_config['o_board_title']).'</title>';
 
@@ -2908,20 +3278,19 @@ function redirect($destination_url, $message)
 
 	($hook = get_hook('fn_redirect_head')) ? eval($hook) : null;
 
-	$tpl_redir = str_replace('<!-- forum_head -->', implode("\n",$forum_head), $tpl_redir);
-	unset($forum_head);
+	$tmp_head = implode("\n", $forum_head).$forum_loader->render_css();
 
+	$tpl_redir = str_replace('<!-- forum_head -->', $tmp_head, $tpl_redir);
+	unset($forum_head,$tmp_head);
 	// END SUBST - <!-- forum_head -->
-
 
 	// START SUBST - <!-- forum_redir_main -->
 	ob_start();
-
 ?>
 <div id="brd-main" class="main basic">
 
 	<div class="main-head">
-		<h1 class="hn"><span><?php echo $message ?></span></h1>
+		<h1 class="hn"><span><?php echo $message.$lang_common['Redirecting'] ?></span></h1>
 	</div>
 
 	<div class="main-content main-message">
@@ -2950,7 +3319,7 @@ function redirect($destination_url, $message)
 	while (preg_match('#<!-- ?forum_include "([^/\\\\]*?)" ?-->#', $tpl_redir, $cur_include))
 	{
 		if (!file_exists(FORUM_ROOT.'include/user/'.$cur_include[1]))
-			error('Unable to process user include &lt;!-- forum_include "'.forum_htmlencode($cur_include[1]).'" --&gt; from template redirect.tpl. There is no such file in folder /include/user/.');
+			error('Unable to process user include &lt;!-- forum_include "'.forum_htmlencode($cur_include[1]).'" --&gt; from template redirect.tpl.<br />There is no such file in folder /include/user/.');
 
 		ob_start();
 		include FORUM_ROOT.'include/user/'.$cur_include[1];
@@ -2971,7 +3340,7 @@ function redirect($destination_url, $message)
 // Display a simple error message
 function error()
 {
-	global $forum_config;
+	global $forum_config, $lang_common;
 
 	if (!headers_sent())
 	{
@@ -3009,6 +3378,33 @@ function error()
 		$forum_config['o_gzip'] = '0';
 	}
 
+	// Set a default error messages string if the script failed before $common_lang loaded
+	if (empty($lang_common['Forum error header']))
+	{
+		$lang_common['Forum error header'] = 'Sorry! The page could not be loaded.';
+	}
+
+	if (empty($lang_common['Forum error description']))
+	{
+		$lang_common['Forum error description'] = 'This is probably a temporary error. Just refresh the page and retry. If problem continues, please check back in 5-10 minutes.';
+	}
+
+	if (empty($lang_common['Forum error location']))
+	{
+		$lang_common['Forum error location'] = 'The error occurred on line %1$s in %2$s';
+	}
+
+	if (empty($lang_common['Forum error db reported']))
+	{
+		$lang_common['Forum error db reported'] = 'Database reported:';
+	}
+
+	if (empty($lang_common['Forum error db query']))
+	{
+		$lang_common['Forum error db query'] = 'Failed query:';
+	}
+
+
 	// Empty all output buffers and stop buffering
 	while (@ob_end_clean());
 
@@ -3017,50 +3413,99 @@ function error()
 		ob_start('ob_gzhandler');
 
 ?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" dir="ltr">
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
 <head>
-<title>Error - <?php echo forum_htmlencode($forum_config['o_board_title']) ?></title>
+	<meta charset="utf-8" />
+	<title>Error - <?php echo forum_htmlencode($forum_config['o_board_title']) ?></title>
+	<style>
+		strong	{ font-weight: bold; }
+		body	{ margin: 50px; font: 85%/150% verdana, arial, sans-serif; color: #222; max-width: 55em; }
+		h1		{ color: #a00000; font-weight: normal; font-size: 1.45em; }
+		code	{ font-family: monospace, sans-serif; }
+		.error_line { color: #999; font-size: .95em; }
+	</style>
 </head>
-<body style="margin: 40px; font: 85%/130% verdana, arial, sans-serif; color: #333;">
-
-<h1>An error was encountered</h1>
-<hr />
+<body>
+	<h1><?php echo forum_htmlencode($lang_common['Forum error header']) ?></h1>
 <?php
-
 	if (isset($message))
 		echo '<p>'.$message.'</p>'."\n";
+	else
+		echo '<p>'.forum_htmlencode($lang_common['Forum error description']).'</p>'."\n";
 
 	if ($num_args > 1)
 	{
 		if (defined('FORUM_DEBUG'))
 		{
-			if (isset($file) && isset($line))
-				echo '<p><em>The error occurred on line '.$line.' in '.$file.'</em></p>'."\n";
-
 			$db_error = isset($GLOBALS['forum_db']) ? $GLOBALS['forum_db']->error() : array();
 			if (!empty($db_error['error_msg']))
 			{
-				echo '<p><strong>Database reported:</strong> '.forum_htmlencode($db_error['error_msg']).(($db_error['error_no']) ? ' (Errno: '.$db_error['error_no'].')' : '').'.</p>'."\n";
+				echo '<p><strong>'.forum_htmlencode($lang_common['Forum error db reported']).'</strong> '.forum_htmlencode($db_error['error_msg']).(($db_error['error_no']) ? ' (Errno: '.$db_error['error_no'].')' : '').'.</p>'."\n";
 
 				if ($db_error['error_sql'] != '')
-					echo '<p><strong>Failed query:</strong> <code>'.forum_htmlencode($db_error['error_sql']).'</code></p>'."\n";
+					echo '<p><strong>'.forum_htmlencode($lang_common['Forum error db query']).'</strong> <code>'.forum_htmlencode($db_error['error_sql']).'</code></p>'."\n";
 			}
+
+			if (isset($file) && isset($line))
+				echo '<p class="error_line">'.forum_htmlencode(sprintf($lang_common['Forum error location'], $line, $file)).'</p>'."\n";
 		}
-		else
-			echo '<p><strong>Note:</strong> For detailed error information (necessary for troubleshooting), enable "DEBUG mode". To enable "DEBUG mode", open up the file config.php in a text editor, add a line that looks like "define(\'FORUM_DEBUG\', 1);" (without the quotation marks), and re-upload the file. Once you\'ve solved the problem, it is recommended that "DEBUG mode" be turned off again (just remove the line from the file and re-upload it).</p>'."\n";
 	}
-
 ?>
-
 </body>
 </html>
 <?php
-
 	// If a database connection was established (before this error) we close it
 	if (isset($GLOBALS['forum_db']))
 		$GLOBALS['forum_db']->close();
 
 	exit;
+}
+
+function send_json($params)
+{
+	header('Content-type: application/json; charset=utf-8');
+	if (!function_exists('json_encode'))
+	{
+		function json_encode($data)
+		{
+			switch ($type = gettype($data))
+			{
+				case 'NULL':
+					return 'null';
+				case 'boolean':
+					return ($data ? 'true' : 'false');
+				case 'integer':
+				case 'double':
+				case 'float':
+					return $data;
+				case 'string':
+					return '"' . addslashes($data) . '"';
+				case 'object':
+					$data = get_object_vars($data);
+				case 'array':
+					$output_index_count = 0;
+					$output_indexed = array();
+					$output_assoc = array();
+					foreach ($data as $key => $value)
+					{
+						$output_indexed[] = json_encode($value);
+						$output_assoc[] = json_encode($key) . ':' . json_encode($value);
+						if ($output_index_count !== NULL && $output_index_count++ !== $key)
+						{
+							$output_index_count = NULL;
+						}
+					}
+					if ($output_index_count !== NULL) {
+						return '[' . implode(',', $output_indexed) . ']';
+					} else {
+						return '{' . implode(',', $output_assoc) . '}';
+					}
+				default:
+					return ''; // Not supported
+			}
+		}
+	}
+	echo json_encode($params);
+	die;
 }

@@ -2,24 +2,29 @@
 /**
  * Loads the minimum amount of data (eg: functions, database connection, config data, etc) necessary to integrate the site.
  *
- * @copyright (C) 2008-2009 PunBB, partially based on code (C) 2008-2009 FluxBB.org
+ * @copyright (C) 2008-2012 PunBB, partially based on code (C) 2008-2009 FluxBB.org
  * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
  * @package PunBB
  */
 
-
-// Enable DEBUG mode by removing // from the following line
-define('FORUM_DEBUG', 1);
-
 if (!defined('FORUM_ROOT'))
 	exit('The constant FORUM_ROOT must be defined and point to a valid PunBB installation root directory.');
 
-// Define the version and database revision that this code was written for
-define('FORUM_VERSION', '1.3.3');
-define('FORUM_DB_REVISION', 4);
+if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) AND strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest')
+{
+	define('FORUM_REQUEST_AJAX', 1);
+}
+
+require FORUM_ROOT.'include/constants.php';
+
+// Record the start time (will be used to calculate the generation time for the page)
+list($usec, $sec) = explode(' ', microtime());
+$forum_start = ((float)$usec + (float)$sec);
 
 // Load the functions script
 require FORUM_ROOT.'include/functions.php';
+// Load the Loader class
+require FORUM_ROOT.'include/loader.php';
 
 // Load UTF-8 functions
 require FORUM_ROOT.'include/utf8/utf8.php';
@@ -42,7 +47,7 @@ if (defined('PUN'))
 	define('FORUM', 1);
 
 if (!defined('FORUM'))
-	error('The file \'config.php\' doesn\'t exist or is corrupt. Please run <a href="'.FORUM_ROOT.'admin/install.php">install.php</a> to install PunBB first.');
+	error('The file \'config.php\' doesn\'t exist or is corrupt.<br />Please run <a href="'.FORUM_ROOT.'admin/install.php">install.php</a> to install PunBB first.');
 
 // Block prefetch requests
 if (isset($_SERVER['HTTP_X_MOZ']) && $_SERVER['HTTP_X_MOZ'] == 'prefetch')
@@ -58,12 +63,17 @@ if (isset($_SERVER['HTTP_X_MOZ']) && $_SERVER['HTTP_X_MOZ'] == 'prefetch')
 	exit;
 }
 
-// Record the start time (will be used to calculate the generation time for the page)
-list($usec, $sec) = explode(' ', microtime());
-$forum_start = ((float)$usec + (float)$sec);
-
 // Make sure PHP reports all errors except E_NOTICE. PunBB supports E_ALL, but a lot of scripts it may interact with, do not.
-error_reporting(E_ALL);
+if (defined('FORUM_DEBUG'))
+	error_reporting(E_ALL);
+else
+	error_reporting(E_ALL ^ E_NOTICE);
+
+// Detect UTF-8 support in PCRE
+if ((version_compare(PHP_VERSION, '5.1.0', '>=') || (version_compare(PHP_VERSION, '5.0.0-dev', '<=') && version_compare(PHP_VERSION, '4.4.0', '>='))) && @/**/preg_match('/\p{L}/u', 'a') !== FALSE)
+{
+	define('FORUM_SUPPORT_PCRE_UNICODE', 1);
+}
 
 // Force POSIX locale (to prevent functions such as strtolower() from messing up UTF-8 strings)
 setlocale(LC_CTYPE, 'C');
@@ -106,7 +116,7 @@ if (!isset($base_url))
 
 // Verify that we are running the proper database schema revision
 if (defined('PUN') || !isset($forum_config['o_database_revision']) || $forum_config['o_database_revision'] < FORUM_DB_REVISION || version_compare($forum_config['o_cur_version'], FORUM_VERSION, '<'))
-	error('Your PunBB database is out-of-date and must be upgraded in order to continue. Please run <a href="'.$base_url.'/admin/db_update.php">db_update.php</a> in order to complete the upgrade process.');
+	error('Your PunBB database is out-of-date and must be upgraded in order to continue.<br />Please run <a href="'.$base_url.'/admin/db_update.php">db_update.php</a> in order to complete the upgrade process.');
 
 
 // Load hooks
@@ -122,10 +132,8 @@ if (!defined('FORUM_HOOKS_LOADED'))
 	require FORUM_CACHE_DIR.'cache_hooks.php';
 }
 
-// Define a few commonly used constants
-define('FORUM_UNVERIFIED', 0);
-define('FORUM_ADMIN', 1);
-define('FORUM_GUEST', 2);
+require FORUM_ROOT.'include/flash_messenger.php';
+$forum_flash = new FlashMessenger();
 
 // A good place to add common functions for your extension
 ($hook = get_hook('es_essentials')) ? eval($hook) : null;

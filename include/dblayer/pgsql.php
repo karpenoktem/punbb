@@ -2,7 +2,7 @@
 /**
  * A database layer class that relies on the PostgreSQL PHP extension.
  *
- * @copyright (C) 2008-2009 PunBB, partially based on code (C) 2008-2009 FluxBB.org
+ * @copyright (C) 2008-2012 PunBB, partially based on code (C) 2008-2009 FluxBB.org
  * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
  * @package PunBB
  */
@@ -101,22 +101,22 @@ class DBLayer
 
 	function query($sql, $unbuffered = false)	// $unbuffered is ignored since there is no pgsql_unbuffered_query()
 	{
-		if (strlen($sql) > 140000)
+		if (strlen($sql) > FORUM_DATABASE_QUERY_MAXIMUM_LENGTH)
 			exit('Insane query. Aborting.');
 
 		if (strrpos($sql, 'LIMIT') !== false)
 			$sql = preg_replace('#LIMIT ([0-9]+),([ 0-9]+)#', 'LIMIT \\2 OFFSET \\1', $sql);
 
-		if (defined('FORUM_SHOW_QUERIES'))
-			$q_start = get_microtime();
+		if (defined('FORUM_SHOW_QUERIES') || defined('FORUM_DEBUG'))
+			$q_start = forum_microtime();
 
 		@pg_send_query($this->link_id, $sql);
 		$this->query_result = @pg_get_result($this->link_id);
 
 		if (pg_result_status($this->query_result) != PGSQL_FATAL_ERROR)
 		{
-			if (defined('FORUM_SHOW_QUERIES'))
-				$this->saved_queries[] = array($sql, sprintf('%.5f', get_microtime() - $q_start));
+			if (defined('FORUM_SHOW_QUERIES') || defined('FORUM_DEBUG'))
+				$this->saved_queries[] = array($sql, sprintf('%.5f', forum_microtime() - $q_start));
 
 			++$this->num_queries;
 
@@ -126,7 +126,7 @@ class DBLayer
 		}
 		else
 		{
-			if (defined('FORUM_SHOW_QUERIES'))
+			if (defined('FORUM_SHOW_QUERIES') || defined('FORUM_DEBUG'))
 				$this->saved_queries[] = array($sql, 0);
 
 			$this->error_msg = @pg_result_error($this->query_result);
@@ -326,7 +326,7 @@ class DBLayer
 		{
 			if ($this->in_transaction)
 			{
-				if (defined('FORUM_SHOW_QUERIES'))
+				if (defined('FORUM_SHOW_QUERIES') || defined('FORUM_DEBUG'))
 					$this->saved_queries[] = array('COMMIT', 0);
 
 				@pg_query($this->link_id, 'COMMIT');
