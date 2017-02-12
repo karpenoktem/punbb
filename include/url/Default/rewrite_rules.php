@@ -2,7 +2,7 @@
 /**
  * Loads the regular expressions used to match SEF URL requests to their proper URLs.
  *
- * @copyright (C) 2008-2009 PunBB, partially based on code (C) 2008-2009 FluxBB.org
+ * @copyright (C) 2008-2012 PunBB, partially based on code (C) 2008-2009 FluxBB.org
  * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
  * @package PunBB
  */
@@ -32,8 +32,8 @@ $forum_rewrite_rules = array(
 	'/^search[\/_-]?(recent)[\/_-]([0-9]+)[\/_-]p(age)?[\/_-]?([0-9]+)(\.html?|\/)?$/i'										=>	'search.php?action=show_recent&value=$2&p=$4',
 	'/^search[\/_-]?(new|recent|unanswered)(\.html?|\/)?$/i'																=>	'search.php?action=show_$1',
 	'/^search[\/_-]?(new|recent|unanswered)[\/_-]p(age)?[\/_-]?([0-9]+)(\.html?|\/)?$/i'									=>	'search.php?action=show_$1&p=$3',
-	'/^search[\/_-]?subscriptions[\/_-]?([0-9]+)(\.html?|\/)?$/i'															=>	'search.php?action=show_subscriptions&user_id=$1',
-	'/^search[\/_-]?subscriptions[\/_-]?([0-9]+)[\/_-]p(age)?[\/_-]?([0-9]+)(\.html?|\/)?$/i'								=>	'search.php?action=show_subscriptions&user_id=$1&p=$3',
+	'/^search[\/_-]?(subscriptions|forum_subscriptions)[\/_-]?([0-9]+)(\.html?|\/)?$/i'										=>	'search.php?action=show_subscriptions&user_id=$1',
+	'/^search[\/_-]?(subscriptions|forum_subscriptions)[\/_-]?([0-9]+)[\/_-]p(age)?[\/_-]?([0-9]+)(\.html?|\/)?$/i'			=>	'search.php?action=show_subscriptions&user_id=$1&p=$3',
 	'/^search[\/_-]?([0-9]+)(\.html?|\/)?$/i'																				=>	'search.php?search_id=$1',
 	'/^search[\/_-]?([0-9]+)[\/_-]?p(age)?[\/_-]?([0-9]+)(\.html?|\/)?$/i'													=>	'search.php?search_id=$1&p=$3',
 	'/^search[\/_-]?(posts|topics)[\/_-]?user[\/_-]?([0-9]+)(\.html?|\/)?$/i'												=>	'search.php?action=show_user_$1&user_id=$2',
@@ -45,7 +45,7 @@ $forum_rewrite_rules = array(
 	'/^users(\.html?|\/)?$/i'																								=>	'userlist.php',
 	'/^users\/(.*)\/([0-9-]+)\/?([a-z_]+)[\/_-]([a-zA-Z]+)[\/_-]p(age)?[\/_-]?([0-9]+)(\.html?|\/)?$/i'						=>	'userlist.php?username=$1&show_group=$2&sort_by=$3&sort_dir=$4&p=$6',
 	'/^users\/(.*)\/([0-9-]+)\/?([a-z_]+)[\/_-]([a-zA-Z]+)(\.html?|\/)?$/i'													=>	'userlist.php?username=$1&show_group=$2&sort_by=$3&sort_dir=$4',
-	'/^(email|report|subscribe|unsubscribe)[\/_-]?([0-9]+)[\/_-]?([a-z0-9]+)?(\.html?|\/)?$/i'								=>	'misc.php?$1=$2&csrf_token=$3',
+	'/^(email|report|subscribe|unsubscribe|forum_subscribe|forum_unsubscribe)[\/_-]?([0-9]+)[\/_-]?([a-z0-9]+)?(\.html?|\/)?$/i'								=>	'misc.php?$1=$2&csrf_token=$3',
 	'/^(mark|rules)[\/_-]?(read)?[\/_-]?([a-z0-9]+)?(\.html?|\/)?$/i'														=>	'misc.php?action=$1$2&csrf_token=$3',
 	'/^mark[\/_-](forum)[\/_-]?([0-9]+)[\/_-](read)[\/_-]([a-z0-9]+)(\.html?|\/)?$/i'										=>	'misc.php?action=markforumread&fid=$2&csrf_token=$4',
 	'/^help[\/_-]([a-z]+)(\.html?|\/)?$/i'																					=>	'help.php?section=$1',

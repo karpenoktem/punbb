@@ -2,7 +2,7 @@
 /**
  * Outputs the footer used by most forum pages.
  *
- * @copyright (C) 2008-2009 PunBB, partially based on code (C) 2008-2009 FluxBB.org
+ * @copyright (C) 2008-2012 PunBB, partially based on code (C) 2008-2009 FluxBB.org
  * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
  * @package PunBB
  */
@@ -35,12 +35,10 @@ if ($forum_user['g_read_board'] == '1' && $forum_config['o_quickjump'] == '1')
 	}
 }
 
-$forum_page['copyright'] = sprintf($lang_common['Powered by'], '<a href="http://punbb.informer.com/">PunBB</a>'.($forum_config['o_show_version'] == '1' ? ' '.$forum_config['o_cur_version'] : ''), '<a href="http://www.informer.com/">Informer Technologies, Inc</a>');
-
 ($hook = get_hook('ft_about_pre_copyright')) ? eval($hook) : null;
 
 ?>
-	<p id="copyright"><?php echo $forum_page['copyright']; ?></p>
+	<p id="copyright"><?php echo sprintf($lang_common['Powered by'], '<a href="http://punbb.informer.com/">PunBB</a>'.($forum_config['o_show_version'] == '1' ? ' '.$forum_config['o_cur_version'] : ''), '<a href="http://www.informer.com/">Informer Technologies, Inc</a>') ?></p>
 <?php
 
 ($hook = get_hook('ft_about_end')) ? eval($hook) : null;
@@ -62,9 +60,28 @@ if (defined('FORUM_DEBUG') || defined('FORUM_SHOW_QUERIES'))
 	if (defined('FORUM_DEBUG'))
 	{
 		// Calculate script generation time
-		list($usec, $sec) = explode(' ', microtime());
-		$time_diff = forum_number_format(((float)$usec + (float)$sec) - $forum_start, 3);
-		echo '<p id="querytime">[ '.sprintf($lang_common['Querytime'], $time_diff, forum_number_format($forum_db->get_num_queries())).' ]</p>'."\n";
+		$time_diff = forum_microtime() - $forum_start;
+		$query_time_total = $time_percent_db = 0.0;
+
+		$saved_queries = $forum_db->get_saved_queries();
+		if (count($saved_queries) > 0)
+		{
+			foreach ($saved_queries as $cur_query)
+			{
+				$query_time_total += $cur_query[1];
+			}
+
+			if ($query_time_total > 0 && $time_diff > 0)
+			{
+				$time_percent_db = ($query_time_total / $time_diff) * 100;
+			}
+		}
+
+		echo '<p id="querytime" class="quiet">'.sprintf($lang_common['Querytime'],
+			forum_number_format($time_diff, 3),
+			forum_number_format(100 - $time_percent_db, 0),
+			forum_number_format($time_percent_db, 0),
+			forum_number_format($forum_db->get_num_queries())).'</p>'."\n";
 	}
 
 	if (defined('FORUM_SHOW_QUERIES'))
@@ -77,6 +94,31 @@ if (defined('FORUM_DEBUG') || defined('FORUM_SHOW_QUERIES'))
 	ob_end_clean();
 }
 // END SUBST - <!-- forum_debug -->
+
+
+// START SUBST - <!-- forum_javascript -->
+$forum_javascript_commonjs_urls = '
+	if (typeof PUNBB === \'undefined\' || !PUNBB) {
+		var PUNBB = {};
+	}
+
+	PUNBB.env = {
+		base_url: "'.forum_htmlencode($base_url).'/",
+		base_js_url: "'.forum_htmlencode($base_url).'/include/js/",
+		user_lang: "'.forum_htmlencode($forum_user['language']).'",
+		user_style: "'.forum_htmlencode($forum_user['style']).'",
+		user_is_guest: "'.forum_htmlencode(($forum_user['is_guest'] == 1) ? "1" : "0").'",
+		page: "'.forum_htmlencode((defined("FORUM_PAGE")) ? FORUM_PAGE : "unknown" ).'"
+	};';
+
+
+$forum_loader->add_js($forum_javascript_commonjs_urls, array('type' => 'inline', 'weight' => 50, 'group' => FORUM_JS_GROUP_SYSTEM));
+$forum_loader->add_js($base_url.'/include/js/min/punbb.common.min.js', array('weight' => 55, 'async' => false, 'group' => FORUM_JS_GROUP_SYSTEM));
+
+($hook = get_hook('ft_js_include')) ? eval($hook) : null;
+
+$tpl_main = str_replace('<!-- forum_javascript -->', $forum_loader->render_js(), $tpl_main);
+// END SUBST - <!-- forum_javascript -->
 
 // Last call!
 ($hook = get_hook('ft_end')) ? eval($hook) : null;

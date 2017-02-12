@@ -5,7 +5,6 @@ $lang_admin_common = array(
 
 // Common items
 'Save changes'					=>	'Save changes',
-'Redirect'						=>	'Redirecting…',
 'Add'							=>	'Add',
 'Add new'						=>	'Add new',
 'Delete'						=>	'Delete',
@@ -17,14 +16,14 @@ $lang_admin_common = array(
 'No'							=>	'No',
 'Save changes'					=>	'Save changes',
 'Save'							=>	'Save',
-'E-mail'						=>	'E-mail',
+'E-mail'						=>	'Email',
 'Cancel'						=>	'Cancel',
-'Cancel redirect'				=>	'Operation cancelled. Redirecting…',
+'Cancel redirect'				=>	'Operation cancelled.',
 'Unknown'						=>	'Unknown',
 'Delete help'					=>	'Requires confirmation via separate form.',
 'Select all'					=>	'Select all',
 'Required'						=>	'(Required)',
-'Required warn'					=>	'All fields labelled %s must be completed before the form is submitted.',
+'Required warn'					=>	'All fields with bold label must be completed before the form is submitted.',
 
 // Main Admin Menu Items and Title
 'Forum administration'			=>	'Administration',
@@ -46,7 +45,6 @@ $lang_admin_common = array(
 'Features'						=>	'Features',
 'Announcements'					=>	'Announcements',
 'Registration'					=>	'Registration',
-'E-mail'						=>	'E-mail',
 'Censoring'						=>	'Censoring',
 
 // Users Submenu

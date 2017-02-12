@@ -2,7 +2,7 @@
 /**
  * Lists the topics in the specified forum.
  *
- * @copyright (C) 2008-2009 PunBB, partially based on code (C) 2008-2009 FluxBB.org
+ * @copyright (C) 2008-2012 PunBB, partially based on code (C) 2008-2009 FluxBB.org
  * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
  * @package PunBB
  */
@@ -39,12 +39,22 @@ $query = array(
 	'WHERE'		=> '(fp.read_forum IS NULL OR fp.read_forum=1) AND f.id='.$id
 );
 
+if (!$forum_user['is_guest'] && $forum_config['o_subscriptions'] == '1')
+{
+	$query['SELECT'] .= ', fs.user_id AS is_subscribed';
+	$query['JOINS'][] = array(
+		'LEFT JOIN'	=> 'forum_subscriptions AS fs',
+		'ON'		=> '(f.id=fs.forum_id AND fs.user_id='.$forum_user['id'].')'
+	);
+}
+
 ($hook = get_hook('vf_qr_get_forum_info')) ? eval($hook) : null;
 $result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
-if (!$forum_db->num_rows($result))
+$cur_forum = $forum_db->fetch_assoc($result);
+
+if (!$cur_forum)
 	message($lang_common['Bad request']);
 
-$cur_forum = $forum_db->fetch_assoc($result);
 
 ($hook = get_hook('vf_modify_forum_info')) ? eval($hook) : null;
 
@@ -90,30 +100,61 @@ if ($forum_page['page'] > 1)
 }
 
 
-// Fetch list of topics
+// 1. Retrieve the topics id
 $query = array(
-	'SELECT'	=> 't.id, t.poster, t.subject, t.posted, t.first_post_id, t.last_post, t.last_post_id, t.last_poster, t.num_views, t.num_replies, t.closed, t.sticky, t.moved_to',
+	'SELECT'	=> 't.id',
 	'FROM'		=> 'topics AS t',
 	'WHERE'		=> 't.forum_id='.$id,
 	'ORDER BY'	=> 't.sticky DESC, '.(($cur_forum['sort_by'] == '1') ? 't.posted' : 't.last_post').' DESC',
 	'LIMIT'		=> $forum_page['start_from'].', '.$forum_user['disp_topics']
 );
 
-// With "has posted" indication
-if (!$forum_user['is_guest'] && $forum_config['o_show_dot'] == '1')
-{
-	$subquery = array(
-		'SELECT'	=> 'COUNT(p.id)',
-		'FROM'		=> 'posts AS p',
-		'WHERE'		=> 'p.poster_id='.$forum_user['id'].' AND p.topic_id=t.id'
-	);
+($hook = get_hook('vt_qr_get_topics_id')) ? eval($hook) : null;
+$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
 
-	($hook = get_hook('vf_qr_get_has_posted')) ? eval($hook) : null;
-	$query['SELECT'] .= ', ('.$forum_db->query_build($subquery, true).') AS has_posted';
+$topics_id = $topics = array();
+while ($row = $forum_db->fetch_assoc($result)) {
+	$topics_id[] = $row['id'];
 }
 
-($hook = get_hook('vf_qr_get_topics')) ? eval($hook) : null;
-$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
+// If there are topics id in this forum
+if (!empty($topics_id))
+{
+	/*
+	 * Fetch list of topics
+	 * EXT DEVELOPERS
+	 * If you modify SELECT of this query - than add same columns in next query (has posted) in GROUP BY
+	*/
+	$query = array(
+		'SELECT'	=> 't.id, t.poster, t.subject, t.posted, t.first_post_id, t.last_post, t.last_post_id, t.last_poster, t.num_views, t.num_replies, t.closed, t.sticky, t.moved_to',
+		'FROM'		=> 'topics AS t',
+		'WHERE'		=> 't.id IN ('.implode(',', $topics_id).')',
+		'ORDER BY'	=> 't.sticky DESC, '.(($cur_forum['sort_by'] == '1') ? 't.posted' : 't.last_post').' DESC',
+	);
+
+	// With "has posted" indication
+	if (!$forum_user['is_guest'] && $forum_config['o_show_dot'] == '1')
+	{
+		$query['SELECT'] .= ', p.poster_id AS has_posted';
+		$query['JOINS'][]	= array(
+			'LEFT JOIN'		=> 'posts AS p',
+			'ON'			=> '(p.poster_id='.$forum_user['id'].' AND p.topic_id=t.id)'
+		);
+
+		// Must have same columns as in prev SELECT
+		$query['GROUP BY'] = 't.id, t.poster, t.subject, t.posted, t.first_post_id, t.last_post, t.last_post_id, t.last_poster, t.num_views, t.num_replies, t.closed, t.sticky, t.moved_to, p.poster_id';
+
+		($hook = get_hook('vf_qr_get_has_posted')) ? eval($hook) : null;
+	}
+
+	($hook = get_hook('vf_qr_get_topics')) ? eval($hook) : null;
+	$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
+
+	while ($cur_topic = $forum_db->fetch_assoc($result))
+	{
+		$topics[] = $cur_topic;
+	}
+}
 
 // Generate paging/posting links
 $forum_page['page_post']['paging'] = '<p class="paging"><span class="pages">'.$lang_common['Pages'].'</span> '.paginate($forum_page['num_pages'], $forum_page['page'], $forum_url['forum'], $lang_common['Paging separator'], array($id, sef_friendly($cur_forum['forum_name']))).'</p>';
@@ -126,12 +167,20 @@ else
 	$forum_page['page_post']['posting'] = '<p class="posting">'.$lang_forum['No permission'].'</p>';
 
 // Setup main options
-$forum_page['main_head_options'] = array(
-	'feed'	=> '<span class="feed first-item"><a class="feed" href="'.forum_link($forum_url['forum_rss'], $id).'">'.$lang_forum['RSS forum feed'].'</a></span>'
-);
+$forum_page['main_head_options'] = $forum_page['main_foot_options'] = array();
 
-$forum_page['main_foot_options'] = array();
-if (!$forum_user['is_guest'] && $forum_db->num_rows($result))
+if (!empty($topics))
+	$forum_page['main_head_options']['feed'] = '<span class="feed first-item"><a class="feed" href="'.forum_link($forum_url['forum_rss'], $id).'">'.$lang_forum['RSS forum feed'].'</a></span>';
+
+if (!$forum_user['is_guest'] && $forum_config['o_subscriptions'] == '1')
+{
+	if ($cur_forum['is_subscribed'])
+		$forum_page['main_head_options']['unsubscribe'] = '<span><a class="sub-option" href="'.forum_link($forum_url['forum_unsubscribe'], array($id, generate_form_token('forum_unsubscribe'.$id.$forum_user['id']))).'"><em>'.$lang_forum['Unsubscribe'].'</em></a></span>';
+	else
+		$forum_page['main_head_options']['subscribe'] = '<span><a class="sub-option" href="'.forum_link($forum_url['forum_subscribe'], array($id, generate_form_token('forum_subscribe'.$id.$forum_user['id']))).'" title="'.$lang_forum['Subscribe info'].'">'.$lang_forum['Subscribe'].'</a></span>';
+}
+
+if (!$forum_user['is_guest'] && !empty($topics))
 {
 	$forum_page['main_foot_options']['mark_read'] = '<span class="first-item"><a href="'.forum_link($forum_url['mark_forum_read'], array($id, generate_form_token('markforumread'.$id.$forum_user['id']))).'">'.$lang_forum['Mark forum read'].'</a></span>';
 
@@ -142,7 +191,7 @@ if (!$forum_user['is_guest'] && $forum_db->num_rows($result))
 // Setup breadcrumbs
 $forum_page['crumbs'] = array(
 	array($forum_config['o_board_title'], forum_link($forum_url['index'])),
-	array($cur_forum['forum_name'], forum_link($forum_url['forum'], array($id, sef_friendly($cur_forum['forum_name']))))
+	$cur_forum['forum_name']
 );
 
 // Setup main header
@@ -173,7 +222,7 @@ $forum_page['item_header']['info']['lastpost'] = '<strong class="info-lastpost">
 ($hook = get_hook('vf_main_output_start')) ? eval($hook) : null;
 
 // If there are topics in this forum
-if ($forum_db->num_rows($result))
+if (!empty($topics))
 {
 
 ?>
@@ -196,7 +245,7 @@ if ($forum_db->num_rows($result))
 
 	$forum_page['item_count'] = 0;
 
-	while ($cur_topic = $forum_db->fetch_assoc($result))
+	foreach ($topics as $cur_topic)
 	{
 		($hook = get_hook('vf_topic_loop_start')) ? eval($hook) : null;
 
@@ -220,10 +269,11 @@ if ($forum_db->num_rows($result))
 
 			($hook = get_hook('vf_topic_loop_moved_topic_pre_item_subject_merge')) ? eval($hook) : null;
 
+			$forum_page['item_body']['info']['replies'] = '<li class="info-replies"><span class="label">'.$lang_forum['No replies info'].'</span></li>';
+
 			if ($forum_config['o_topic_views'] == '1')
 				$forum_page['item_body']['info']['views'] = '<li class="info-views"><span class="label">'.$lang_forum['No views info'].'</span></li>';
 
-			$forum_page['item_body']['info']['replies'] = '<li class="info-replies"><span class="label">'.$lang_forum['No replies info'].'</span></li>';
 			$forum_page['item_body']['info']['lastpost'] = '<li class="info-lastpost"><span class="label">'.$lang_forum['No lastpost info'].'</span></li>';
 		}
 		else
@@ -231,7 +281,7 @@ if ($forum_db->num_rows($result))
 			// Assemble the Topic heading
 
 			// Should we display the dot or not? :)
-			if (!$forum_user['is_guest'] && $forum_config['o_show_dot'] == '1' && $cur_topic['has_posted'] > 0)
+			if (!$forum_user['is_guest'] && $forum_config['o_show_dot'] == '1' && $cur_topic['has_posted'] == $forum_user['id'])
 			{
 				$forum_page['item_title']['posted'] = '<span class="posted-mark">'.$lang_forum['You posted indicator'].'</span>';
 				$forum_page['item_status']['posted'] = 'posted';
@@ -338,6 +388,11 @@ else
 
 ?>
 	<div class="main-head">
+<?php
+
+	if (!empty($forum_page['main_head_options']))
+		echo "\n\t\t".'<p class="options">'.implode(' ', $forum_page['main_head_options']).'</p>';
+?>
 		<h2 class="hn"><span><?php echo $lang_forum['Empty forum'] ?></span></h2>
 	</div>
 	<div id="forum<?php echo $id ?>" class="main-content main-forum">

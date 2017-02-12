@@ -2,7 +2,7 @@
 /**
  * Regular URL scheme.
  *
- * @copyright (C) 2008-2009 PunBB, partially based on code (C) 2008-2009 FluxBB.org
+ * @copyright (C) 2008-2012 PunBB, partially based on code (C) 2008-2009 FluxBB.org
  * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
  * @package PunBB
  */
@@ -26,6 +26,8 @@ $forum_url = array(
 	'forum'							=>	'viewforum.php?id=$1',
 	'forum_rss'						=>	'extern.php?action=feed&amp;fid=$1&amp;type=rss',
 	'forum_atom'					=>	'extern.php?action=feed&amp;fid=$1&amp;type=atom',
+	'forum_subscribe'				=>	'misc.php?forum_subscribe=$1&amp;csrf_token=$2',
+	'forum_unsubscribe'				=>	'misc.php?forum_unsubscribe=$1&amp;csrf_token=$2',
 	'help'							=>	'help.php?section=$1',
 	'index'							=>	'index.php',
 	'index_rss'						=>	'extern.php?action=feed&amp;type=rss',
@@ -36,6 +38,7 @@ $forum_url = array(
 	'mark_forum_read'				=>	'misc.php?action=markforumread&amp;fid=$1&amp;csrf_token=$2',
 	'new_topic'						=>	'post.php?fid=$1',
 	'new_reply'						=>	'post.php?tid=$1',
+	'opensearch'					=>	'misc.php?action=opensearch',
 	'post'							=>	'viewtopic.php?pid=$1#p$1',
 	'profile_about'					=>	'profile.php?section=about&amp;id=$1',
 	'profile_identity'				=>	'profile.php?section=identity&amp;id=$1',
@@ -49,6 +52,7 @@ $forum_url = array(
 	'request_password'				=>	'login.php?action=forget',
 	'rules'							=>	'misc.php?action=rules',
 	'search'						=>	'search.php',
+	'search_advanced'				=>	'search.php?advanced=1',
 	'search_resultft'				=>	'search.php?action=search&amp;keywords=$1&amp;author=$3&amp;forum=$2&amp;search_in=$4&amp;sort_by=$5&amp;sort_dir=$6&amp;show_as=$7',
 	'search_results'				=>	'search.php?search_id=$1',
 	'search_new'					=>	'search.php?action=show_new',
@@ -57,6 +61,7 @@ $forum_url = array(
 	'search_recent_results'			=>	'search.php?action=show_recent&amp;value=$1',
 	'search_unanswered'				=>	'search.php?action=show_unanswered',
 	'search_subscriptions'			=>	'search.php?action=show_subscriptions&amp;user_id=$1',
+	'search_forum_subscriptions'	=>	'search.php?action=show_forum_subscriptions&amp;user_id=$1',
 	'search_user_posts'				=>	'search.php?action=show_user_posts&amp;user_id=$1',
 	'search_user_topics'			=>	'search.php?action=show_user_topics&amp;user_id=$1',
 	'subscribe'						=>	'misc.php?subscribe=$1&amp;csrf_token=$2',
@@ -79,12 +84,13 @@ $forum_url = array(
 	'unstick'						=>	'moderate.php?fid=$1&amp;unstick=$2&amp;csrf_token=$3',
 	'moderate_topic'				=>	'moderate.php?fid=$1&amp;tid=$2',
 	'admin_index'					=>	'admin/index.php',
-	'admin_bans'					=>	'admin/bans.php',
+	'admin_bans'					=>	'admin/bans.php?sort_by=1',
 	'admin_categories'				=>	'admin/categories.php',
 	'admin_censoring'				=>	'admin/censoring.php',
 	'admin_extensions_manage'		=>	'admin/extensions.php?section=manage',
 	'admin_extensions_hotfixes'		=>	'admin/extensions.php?section=hotfixes',
 	'admin_forums'					=>	'admin/forums.php',
+	'admin_forums_forum'			=>	'admin/forums.php#forum$1',
 	'admin_groups'					=>	'admin/groups.php',
 	'admin_loader'					=>	'admin/loader.php',
 	'admin_reindex'					=>	'admin/reindex.php',

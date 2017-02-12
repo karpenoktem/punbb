@@ -2,7 +2,7 @@
 /**
  * Loads common data and performs various functions necessary for the site to work properly.
  *
- * @copyright (C) 2008-2009 PunBB, partially based on code (C) 2008-2009 FluxBB.org
+ * @copyright (C) 2008-2012 PunBB, partially based on code (C) 2008-2009 FluxBB.org
  * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
  * @package PunBB
  */
@@ -16,7 +16,7 @@ if (!defined('FORUM_ESSENTIALS_LOADED'))
 
 // Turn off magic_quotes_runtime
 if (get_magic_quotes_runtime())
-	set_magic_quotes_runtime(0);
+	@ini_set('magic_quotes_runtime', false);
 
 // Strip slashes from GET/POST/COOKIE (if magic_quotes_gpc is enabled)
 if (get_magic_quotes_gpc())
@@ -66,10 +66,10 @@ cookie_login($forum_user);
 if (file_exists(FORUM_ROOT.'lang/'.$forum_user['language'].'/common.php'))
 	include FORUM_ROOT.'lang/'.$forum_user['language'].'/common.php';
 else
-	error('There is no valid language pack \''.forum_htmlencode($forum_user['language']).'\' installed. Please reinstall a language of that name.');
+	error('There is no valid language pack \''.forum_htmlencode($forum_user['language']).'\' installed.<br />Please reinstall a language of that name.');
 
 // Setup the URL rewriting scheme
-if (file_exists(FORUM_ROOT.'include/url/'.$forum_config['o_sef'].'/forum_urls.php'))
+if ($forum_config['o_sef'] != 'Default' && file_exists(FORUM_ROOT.'include/url/'.$forum_config['o_sef'].'/forum_urls.php'))
 	require FORUM_ROOT.'include/url/'.$forum_config['o_sef'].'/forum_urls.php';
 else
 	require FORUM_ROOT.'include/url/Default/forum_urls.php';

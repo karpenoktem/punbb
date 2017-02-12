@@ -2,7 +2,7 @@
 /**
  * Handles logins, logouts, and password reset requests.
  *
- * @copyright (C) 2008-2009 PunBB, partially based on code (C) 2008-2009 FluxBB.org
+ * @copyright (C) 2008-2012 PunBB, partially based on code (C) 2008-2009 FluxBB.org
  * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
  * @package PunBB
  */
@@ -39,7 +39,7 @@ if (isset($_POST['form_sent']) && empty($action))
 		'FROM'		=> 'users AS u'
 	);
 
-	if ($db_type == 'mysql' || $db_type == 'mysqli')
+	if (in_array($db_type, array('mysql', 'mysqli', 'mysql_innodb', 'mysqli_innodb')))
 		$query['WHERE'] = 'username=\''.$forum_db->escape($form_username).'\'';
 	else
 		$query['WHERE'] = 'LOWER(username)=LOWER(\''.$forum_db->escape($form_username).'\')';
@@ -95,6 +95,14 @@ if (isset($_POST['form_sent']) && empty($action))
 
 			($hook = get_hook('li_login_qr_update_user_group')) ? eval($hook) : null;
 			$forum_db->query_build($query) or error(__FILE__, __LINE__);
+
+			// Remove cache file with forum stats
+			if (!defined('FORUM_CACHE_FUNCTIONS_LOADED'))
+			{
+				require FORUM_ROOT.'include/cache.php';
+			}
+
+			clean_stats_cache();
 		}
 
 		// Remove this user's guest entry from the online list
@@ -193,16 +201,24 @@ else if ($action == 'forget' || $action == 'forget_2')
 		// Did everything go according to plan?
 		if (empty($errors))
 		{
+			$users_with_email = array();
+
 			// Fetch user matching $email
 			$query = array(
-				'SELECT'	=> 'u.id, u.username, u.salt, u.last_email_sent',
+				'SELECT'	=> 'u.id, u.group_id, u.username, u.salt, u.last_email_sent',
 				'FROM'		=> 'users AS u',
 				'WHERE'		=> 'u.email=\''.$forum_db->escape($email).'\''
 			);
 
 			($hook = get_hook('li_forgot_pass_qr_get_user_data')) ? eval($hook) : null;
 			$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
-			if ($forum_db->num_rows($result))
+
+			while ($cur_user = $forum_db->fetch_assoc($result))
+			{
+				$users_with_email[] = $cur_user;
+			}
+
+			if (!empty($users_with_email))
 			{
 				($hook = get_hook('li_forgot_pass_pre_email')) ? eval($hook) : null;
 
@@ -221,11 +237,14 @@ else if ($action == 'forget' || $action == 'forget_2')
 				($hook = get_hook('li_forgot_pass_new_general_replace_data')) ? eval($hook) : null;
 
 				// Loop through users we found
-				while ($cur_hit = $forum_db->fetch_assoc($result))
+				foreach ($users_with_email as $cur_hit)
 				{
 					$forgot_pass_timeout = 3600;
 
 					($hook = get_hook('li_forgot_pass_pre_flood_check')) ? eval($hook) : null;
+
+					if ($cur_hit['group_id'] == FORUM_ADMIN)
+						message(sprintf($lang_login['Email important'], '<a href="mailto:'.forum_htmlencode($forum_config['o_admin_email']).'">'.forum_htmlencode($forum_config['o_admin_email']).'</a>'));
 
 					if ($cur_hit['last_email_sent'] != '' && (time() - $cur_hit['last_email_sent']) < $forgot_pass_timeout && (time() - $cur_hit['last_email_sent']) >= 0)
 						message(sprintf($lang_login['Email flood'], $forgot_pass_timeout));
@@ -265,7 +284,7 @@ else if ($action == 'forget' || $action == 'forget_2')
 	// Setup breadcrumbs
 	$forum_page['crumbs'] = array(
 		array($forum_config['o_board_title'], forum_link($forum_url['index'])),
-		array($lang_login['New password request'], forum_link($forum_url['request_password']))
+		$lang_login['New password request']
 	);
 
 	($hook = get_hook('li_forgot_pass_pre_header_load')) ? eval($hook) : null;
@@ -310,7 +329,7 @@ else if ($action == 'forget' || $action == 'forget_2')
 
 ?>
 		<div id="req-msg" class="req-warn ct-box error-box">
-			<p class="important"><?php printf($lang_common['Required warn'], '<em>'.$lang_common['Required'].'</em>') ?></p>
+			<p class="important"><?php echo $lang_common['Required warn'] ?></p>
 		</div>
 		<form id="afocus" class="frm-form" method="post" accept-charset="utf-8" action="<?php echo $forum_page['form_action'] ?>">
 			<div class="hidden">
@@ -322,16 +341,16 @@ else if ($action == 'forget' || $action == 'forget_2')
 <?php ($hook = get_hook('li_forgot_pass_pre_email')) ? eval($hook) : null; ?>
 				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
 					<div class="sf-box text required">
-						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_login['E-mail address'] ?> <em><?php echo $lang_common['Required'] ?></em></span> <small><?php echo $lang_login['E-mail address help'] ?></small></label><br />
-						<span class="fld-input"><input id="fld<?php echo $forum_page['fld_count'] ?>" type="text" name="req_email" value="<?php echo isset($_POST['req_email']) ? forum_htmlencode($_POST['req_email']) : '' ?>" size="35" maxlength="80" /></span>
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_login['E-mail address'] ?></span> <small><?php echo $lang_login['E-mail address help'] ?></small></label><br />
+						<span class="fld-input"><input id="fld<?php echo $forum_page['fld_count'] ?>" type="email" name="req_email" value="<?php if (isset($_POST['req_email'])) echo forum_htmlencode($_POST['req_email']); ?>" size="35" maxlength="80" required spellcheck="false" /></span>
 					</div>
 				</div>
 <?php ($hook = get_hook('li_forgot_pass_pre_group_end')) ? eval($hook) : null; ?>
 			</div>
 <?php ($hook = get_hook('li_forgot_pass_group_end')) ? eval($hook) : null; ?>
 			<div class="frm-buttons">
-				<span class="submit"><input type="submit" name="request_pass" value="<?php echo $lang_login['Submit password request'] ?>" /></span>
-				<span class="cancel"><input type="submit" name="cancel" value="<?php echo $lang_common['Cancel'] ?>" /></span>
+				<span class="submit primary"><input type="submit" name="request_pass" value="<?php echo $lang_login['Submit password request'] ?>" /></span>
+				<span class="cancel"><input type="submit" name="cancel" value="<?php echo $lang_common['Cancel'] ?>" formnovalidate /></span>
 			</div>
 		</form>
 	</div>
@@ -363,7 +382,7 @@ $forum_page['hidden_fields'] = array(
 // Setup breadcrumbs
 $forum_page['crumbs'] = array(
 	array($forum_config['o_board_title'], forum_link($forum_url['index'])),
-	array(sprintf($lang_login['Login info'], $forum_config['o_board_title']), forum_link($forum_url['login']))
+	sprintf($lang_login['Login info'], $forum_config['o_board_title'])
 );
 
 ($hook = get_hook('li_login_pre_header_load')) ? eval($hook) : null;
@@ -408,7 +427,7 @@ ob_start();
 
 ?>
 		<div id="req-msg" class="req-warn ct-box error-box">
-			<p class="important"><?php printf($lang_common['Required warn'], '<em>'.$lang_common['Required'].'</em>') ?></p>
+			<p class="important"><?php echo $lang_common['Required warn'] ?></p>
 		</div>
 		<form id="afocus" class="frm-form" method="post" accept-charset="utf-8" action="<?php echo $forum_page['form_action'] ?>">
 			<div class="hidden">
@@ -419,29 +438,29 @@ ob_start();
 <?php ($hook = get_hook('li_login_pre_username')) ? eval($hook) : null; ?>
 				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
 					<div class="sf-box text required">
-						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_login['Username'] ?> <em><?php echo $lang_common['Required'] ?></em></span></label><br />
-						<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="req_username" value="<?php echo isset($_POST['req_username']) ? forum_htmlencode($_POST['req_username']) : '' ?>" size="35" maxlength="25" /></span>
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_login['Username'] ?></span></label><br />
+						<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="req_username" value="<?php if (isset($_POST['req_username'])) echo forum_htmlencode($_POST['req_username']); ?>" size="35" maxlength="25" required spellcheck="false" /></span>
 					</div>
 				</div>
 <?php ($hook = get_hook('li_login_pre_pass')) ? eval($hook) : null; ?>
 				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
 					<div class="sf-box text required">
-						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_login['Password'] ?> <em><?php echo $lang_common['Required'] ?></em></span></label><br />
-						<span class="fld-input"><input type="password" id="fld<?php echo $forum_page['fld_count'] ?>" name="req_password" value="<?php echo isset($_POST['req_password']) ? forum_htmlencode($_POST['req_password']) : '' ?>" size="35" /></span>
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_login['Password'] ?></span></label><br />
+						<span class="fld-input"><input type="password" id="fld<?php echo $forum_page['fld_count'] ?>" name="req_password" value="<?php if (isset($_POST['req_password'])) echo forum_htmlencode($_POST['req_password']); ?>" size="35" required /></span>
 					</div>
 				</div>
 <?php ($hook = get_hook('li_login_pre_remember_me_checkbox')) ? eval($hook) : null; ?>
 				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
 					<div class="sf-box checkbox">
-						<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="save_pass" value="1" /></span>
-						<label for="fld<?php echo $forum_page['fld_count'] ?>"><span><?php echo $lang_login['Remember me'] ?></span> <?php echo $lang_login['Persistent login'] ?></label>
+						<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="save_pass" value="1"<?php if (isset($_POST['save_pass'])) echo ' checked="checked"'; ?> /></span>
+						<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_login['Remember me'] ?></label>
 					</div>
 				</div>
 <?php ($hook = get_hook('li_login_pre_group_end')) ? eval($hook) : null; ?>
 			</div>
 <?php ($hook = get_hook('li_login_group_end')) ? eval($hook) : null; ?>
 			<div class="frm-buttons">
-				<span class="submit"><input type="submit" name="login" value="<?php echo $lang_login['Login'] ?>" /></span>
+				<span class="submit primary"><input type="submit" name="login" value="<?php echo $lang_login['Login'] ?>" /></span>
 			</div>
 		</form>
 	</div>
